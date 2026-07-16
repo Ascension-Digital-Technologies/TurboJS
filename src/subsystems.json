@@ -1,0 +1,248 @@
+{
+  "version": 10,
+  "entrypoint": "src/generated/turbojs_engine_unit.c",
+  "dependency_order": [
+    "core",
+    "runtime",
+    "objects",
+    "gc",
+    "vm",
+    "compiler",
+    "modules",
+    "serialization",
+    "builtins"
+  ],
+  "subsystems": {
+    "core": {
+      "depends_on": [],
+      "sources": [
+        "core/value_tags.c",
+        "core/allocation_core.c",
+        "core/runtime_support.c"
+      ]
+    },
+    "runtime": {
+      "depends_on": [
+        "core"
+      ],
+      "sources": [
+        "runtime/atom_table.c",
+        "runtime/atom_conversion.c",
+        "runtime/class_registry.c",
+        "runtime/string_core.c",
+        "runtime/string_conversion.c"
+      ]
+    },
+    "objects": {
+      "depends_on": [
+        "core",
+        "runtime"
+      ],
+      "sources": [
+        "objects/shape_core.c",
+        "objects/object_core.c",
+        "objects/object_lifetime.c"
+      ]
+    },
+    "gc": {
+      "depends_on": [
+        "core",
+        "runtime",
+        "objects"
+      ],
+      "sources": [
+        "gc/collector.c",
+        "gc/exception_core.c",
+        "gc/prototype_ops.c",
+        "gc/property_lookup.c",
+        "gc/property_definition.c"
+      ]
+    },
+    "vm": {
+      "depends_on": [
+        "core",
+        "runtime",
+        "objects",
+        "gc"
+      ],
+      "sources": [
+        "vm/value_coercion.c",
+        "vm/numeric_ops.c",
+        "vm/call_runtime.c",
+        "vm/jit_bridge.c",
+        "vm/interpreter.c",
+        "vm/generator_async.c"
+      ]
+    },
+    "compiler": {
+      "depends_on": [
+        "core",
+        "runtime",
+        "objects",
+        "vm"
+      ],
+      "sources": [
+        "compiler/lexer.c",
+        "compiler/parser_state.c",
+        "compiler/parser_expressions.c",
+        "compiler/parser_statements_bytecode.c"
+      ]
+    },
+    "modules": {
+      "depends_on": [
+        "core",
+        "runtime",
+        "objects",
+        "vm",
+        "compiler"
+      ],
+      "sources": [
+        "modules/module_records.c",
+        "modules/module_linker.c",
+        "modules/module_evaluator.c",
+        "modules/function_compiler.c",
+        "modules/eval_api.c"
+      ]
+    },
+    "serialization": {
+      "depends_on": [
+        "core",
+        "runtime",
+        "objects",
+        "vm",
+        "compiler",
+        "modules"
+      ],
+      "sources": [
+        "serialization/bytecode_reader.c",
+        "serialization/bytecode_writer.c"
+      ]
+    },
+    "builtins": {
+      "depends_on": [
+        "core",
+        "runtime",
+        "objects",
+        "gc",
+        "vm",
+        "compiler",
+        "modules",
+        "serialization"
+      ],
+      "sources": [
+        "builtins/object_runtime.c",
+        "builtins/function_runtime.c",
+        "builtins/object_builtin.c",
+        "builtins/function_builtin.c",
+        "builtins/array_builtin.c",
+        "builtins/string_builtin.c",
+        "builtins/number_math_builtin.c",
+        "builtins/regexp_builtin.c",
+        "builtins/json_builtin.c",
+        "builtins/reflect_proxy_builtin.c",
+        "builtins/symbol_builtin.c",
+        "builtins/collection_builtin.c",
+        "builtins/promise_builtin.c",
+        "builtins/date_eval_builtin.c",
+        "builtins/bigint_builtin.c",
+        "builtins/array_buffer_builtin.c",
+        "builtins/typed_array_builtin.c",
+        "builtins/weakref_dom_builtin.c"
+      ]
+    }
+  },
+  "standalone_units": [
+    {
+      "path": "src/runtime/runtime_config_api.c",
+      "subsystem": "runtime",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/runtime_bridge.h",
+      "public_apis": 11
+    },
+    {
+      "path": "src/runtime/context_access_api.c",
+      "subsystem": "runtime",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/context_bridge.h",
+      "public_apis": 4
+    },
+    {
+      "path": "src/runtime/job_api.c",
+      "subsystem": "runtime",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/job_bridge.h",
+      "public_apis": 3
+    },
+    {
+      "path": "src/gc/exception_state_api.c",
+      "subsystem": "gc",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/exception_bridge.h",
+      "public_apis": 4
+    },
+    {
+      "path": "src/builtins/promise_hooks_api.c",
+      "subsystem": "builtins",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/promise_bridge.h",
+      "public_apis": 2
+    },
+    {
+      "path": "src/gc/memory_diagnostics_api.c",
+      "subsystem": "gc",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/diagnostics_bridge.h",
+      "public_apis": 2
+    },
+    {
+      "path": "src/modules/module_api.c",
+      "subsystem": "modules",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/module_bridge.h"
+    },
+    {
+      "path": "src/runtime/lifecycle_api.c",
+      "subsystem": "runtime",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/lifecycle_bridge.h",
+      "public_apis": 9
+    },
+    {
+      "path": "src/runtime/job_enqueue_api.c",
+      "subsystem": "runtime",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/job_enqueue_bridge.h",
+      "public_apis": 1
+    },
+    {
+      "path": "src/objects/class_proto_api.c",
+      "subsystem": "objects",
+      "status": "independently-compiled-facade",
+      "bridge": "src/internal/class_proto_bridge.h",
+      "public_apis": 3
+    },
+    {
+      "path": "src/core/version_api.c",
+      "subsystem": "core",
+      "status": "independently-compiled-implementation",
+      "public_apis": 1
+    }
+  ],
+  "private_type_headers": [
+    "src/internal/platform.h",
+    "src/internal/foundation_types.h"
+  ],
+  "execution_split": {
+    "status": "unity-boundaries-decomposed",
+    "fragment_count": 50,
+    "max_fragment_lines": 7000,
+    "note": "Execution domains are isolated into bounded unity fragments before independent translation-unit conversion."
+  },
+  "assembly": {
+    "generator": "tools/generators/generate_engine_unit.py",
+    "output": "src/generated/turbojs_engine_unit.c",
+    "mode": "generated-amalgamation",
+    "reason": "Preserves TurboJS internal static linkage while source ownership is fully separated."
+  },
+  "private_headers": []
+}

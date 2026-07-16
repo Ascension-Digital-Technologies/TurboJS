@@ -1,0 +1,21 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  focused:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Configure and build
+        run: python scripts/build.py --preset jit-dev --fresh
+      - name: Test
+        run: python scripts/test.py --preset jit-dev
+      - name: Architecture validation
+        run: python tools/validation/check_architecture.py

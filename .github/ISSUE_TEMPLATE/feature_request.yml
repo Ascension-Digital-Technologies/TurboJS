@@ -1,0 +1,15 @@
+name: Feature request
+description: Propose a scoped engine or tooling improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes: {label: Problem}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: Proposed solution}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: Correctness and fallback considerations}
+  - type: textarea
+    attributes: {label: Alternatives}
