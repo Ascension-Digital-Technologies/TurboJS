@@ -1,0 +1,97 @@
+{
+  "profile": "broad-single-variant-baseline",
+  "executions": 6000,
+  "counts": {
+    "fail": 155,
+    "pass": 5833,
+    "skip": 12
+  },
+  "pass_rate_excluding_skips": 97.41148964595858,
+  "inputs": [
+    "build/test262-expressions-3000.json",
+    "build/test262-array-1000.json",
+    "build/test262-statements-2000.json"
+  ],
+  "top_failure_areas": [
+    [
+      "language/expressions/assignment/dstr",
+      50
+    ],
+    [
+      "language/statements/class/decorator",
+      12
+    ],
+    [
+      "language/expressions/class/decorator",
+      8
+    ],
+    [
+      "annexB/language/expressions/assignmenttargettype",
+      7
+    ],
+    [
+      "built-ins/Array/prototype/filter",
+      4
+    ],
+    [
+      "language/expressions/assignment/destructuring",
+      3
+    ],
+    [
+      "annexB/language/expressions/assignment",
+      2
+    ],
+    [
+      "annexB/language/expressions/yield",
+      2
+    ],
+    [
+      "built-ins/Array/prototype/every",
+      2
+    ],
+    [
+      "annexB/language/statements/class",
+      2
+    ],
+    [
+      "annexB/language/statements/const",
+      2
+    ],
+    [
+      "annexB/language/expressions/coalesce",
+      1
+    ],
+    [
+      "annexB/language/expressions/logical-assignment",
+      1
+    ],
+    [
+      "annexB/language/expressions/strict-does-not-equals",
+      1
+    ],
+    [
+      "annexB/language/expressions/strict-equals",
+      1
+    ],
+    [
+      "language/expressions/addition/S11.6.1_A2.4_T4.js",
+      1
+    ],
+    [
+      "language/expressions/arrow-function/eval-var-scope-syntax-err.js",
+      1
+    ],
+    [
+      "language/expressions/arrow-function/non-strict.js",
+      1
+    ],
+    [
+      "language/expressions/arrow-function/scope-body-lex-distinct.js",
+      1
+    ],
+    [
+      "language/expressions/arrow-function/scope-param-elem-var-close.js",
+      1
+    ]
+  ]
+}

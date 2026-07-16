@@ -251,7 +251,7 @@ endif()
 xoption(TURBOJS_BUILD_LIBC "Build standard library modules as part of the library" OFF)
 macro(add_turbojs_libc_if_needed target)
     if(NOT TURBOJS_BUILD_LIBC)
-        target_link_libraries(${target} PRIVATE turbojs-libc)
+        target_link_libraries(${target} PRIVATE turbojs_runtime)
     endif()
 endmacro()
 macro(add_static_if_needed target)
@@ -360,6 +360,7 @@ add_library(TurboJS::Engine ALIAS turbojs)
 target_compile_definitions(turbojs PRIVATE ${turbojs_defines})
 target_include_directories(turbojs PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/internal
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_include_directories(turbojs PUBLIC
@@ -396,6 +397,7 @@ target_include_directories(turbojs_jit PUBLIC
 )
 target_include_directories(turbojs_jit PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/internal
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_definitions(turbojs_jit PRIVATE ${turbojs_defines})
@@ -417,7 +419,7 @@ target_include_directories(turbojs_module INTERFACE
     $<TARGET_PROPERTY:turbojs,INTERFACE_INCLUDE_DIRECTORIES>
 )
 target_compile_definitions(turbojs_module INTERFACE
-    QUICKJS_NG_MODULE_BUILD
+    TURBOJS_MODULE_BUILD
     $<TARGET_PROPERTY:turbojs,INTERFACE_COMPILE_DEFINITIONS>
 )
 if(WIN32)
@@ -432,6 +434,7 @@ if(NOT TURBOJS_BUILD_LIBC)
     add_library(turbojs_runtime STATIC runtime/libc/turbojs-libc.c)
     add_library(TurboJS::Runtime ALIAS turbojs_runtime)
     target_compile_definitions(turbojs_runtime PRIVATE ${turbojs_defines})
+    target_include_directories(turbojs_runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/internal)
     target_link_libraries(turbojs_runtime PRIVATE ${turbojs_system_libs} turbojs)
 endif()
 
@@ -474,6 +477,7 @@ add_executable(turbojs_cli
     src/generated/runtime/standalone.c
     apps/turbojs/main.c
 )
+target_include_directories(turbojs_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_turbojs_libc_if_needed(turbojs_cli)
 add_static_if_needed(turbojs_cli)
 set_target_properties(turbojs_cli PROPERTIES
@@ -638,9 +642,16 @@ if(TURBOJS_BUILD_TESTS)
 
     add_executable(turbojs-automatic-optimizing-tier-test tests/jit/automatic_optimizing_tier_test.c)
     target_link_libraries(turbojs-automatic-optimizing-tier-test PRIVATE turbojs_jit)
+
+    add_executable(turbojs-aot-limits-test tests/jit/aot_limits_test.c)
+    target_link_libraries(turbojs-aot-limits-test PRIVATE turbojs_jit)
+
+    add_executable(turbojs-tier-throughput-benchmark tests/benchmarks/tier_throughput_benchmark.c)
+    target_link_libraries(turbojs-tier-throughput-benchmark PRIVATE turbojs_jit)
     add_test(NAME turbojs.jit.ssa-specialization COMMAND turbojs-ssa-specialization-test)
     add_test(NAME turbojs.jit.completion-pipeline COMMAND turbojs-completion-pipeline-test)
     add_test(NAME turbojs.jit.automatic-optimizing-tier COMMAND turbojs-automatic-optimizing-tier-test)
+    add_test(NAME turbojs.jit.aot-limits COMMAND turbojs-aot-limits-test)
 
     add_custom_target(turbojs-jit-tests
         DEPENDS
@@ -669,6 +680,8 @@ if(TURBOJS_BUILD_TESTS)
             turbojs-ssa-specialization-test
             turbojs-completion-pipeline-test
             turbojs-automatic-optimizing-tier-test
+            turbojs-aot-limits-test
+            turbojs-tier-throughput-benchmark
     )
 
     if(TURBOJS_BUILD_ENGINE_TESTS)
@@ -696,13 +709,30 @@ if(TURBOJS_BUILD_TESTS)
 endif()
 
 if(TURBOJS_BUILD_TEST262_RUNNER AND NOT EMSCRIPTEN)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/test262-runner/main.c")
-        add_executable(run-test262 apps/test262-runner/main.c)
-        add_turbojs_libc_if_needed(run-test262)
-        target_compile_definitions(run-test262 PRIVATE ${turbojs_defines})
-        target_link_libraries(run-test262 PRIVATE turbojs)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/test262/test")
+        add_custom_target(run-test262
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test262.py
+                    --engine $<TARGET_FILE:turbojs_cli> --suite ${CMAKE_CURRENT_SOURCE_DIR}/third_party/test262
+                    --single-variant --profile full --resume --allow-failures
+                    --report ${CMAKE_BINARY_DIR}/test262-full-report.json
+            DEPENDS turbojs_cli
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            USES_TERMINAL
+        )
+        add_custom_target(run-test262-core
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test262.py
+                    --engine $<TARGET_FILE:turbojs_cli> --suite ${CMAKE_CURRENT_SOURCE_DIR}/third_party/test262
+                    --single-variant --profile core --resume --allow-failures
+                    --report ${CMAKE_BINARY_DIR}/test262-core-report.json
+            DEPENDS turbojs_cli
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            USES_TERMINAL
+        )
     else()
-        message(FATAL_ERROR "TURBOJS_BUILD_TEST262_RUNNER=ON but apps/test262-runner/main.c is missing")
+        message(FATAL_ERROR
+            "TURBOJS_BUILD_TEST262_RUNNER=ON but third_party/test262 is missing. "
+            "Run: python scripts/fetch_test262.py")
     endif()
 endif()
 

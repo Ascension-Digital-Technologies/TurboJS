@@ -59,3 +59,38 @@ Manual recovery remains available:
 ```powershell
 python scripts/build.py --preset jit-dev --fresh
 ```
+
+## Test262
+
+TC39 Test262 is fetched on demand and is not included in source archives.
+
+```bash
+python scripts/fetch_test262.py
+```
+
+```bash
+python scripts/test262.py --single-variant --workers 16
+python scripts/test262.py --filter built-ins/Array --workers 8
+python scripts/test262.py --single-variant --shard-count 16 --shard-index 0
+```
+
+The JSON report defaults to `build/test262-report.json`. Host-dependent tests
+requiring realms, agents, or ArrayBuffer detachment are explicitly skipped.
+
+## Resumable Test262 runs
+
+The Test262 runner captures child-process output as raw bytes and decodes it with
+UTF-8 backslash replacement, so malformed or non-console byte sequences cannot
+crash a Windows run. It writes atomic checkpoints every 250 executions by
+default.
+
+Resume an interrupted run with:
+
+```powershell
+python scripts\test262.py --engine build\test262\turbojs.exe --suite third_party\test262 --single-variant --resume
+```
+
+The CMake `run-test262` target enables `--resume` automatically and uses
+`--allow-failures`, because conformance failures are report data rather than a
+build-system failure. The final report remains available at
+`build/test262-report.json`.

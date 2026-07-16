@@ -651,6 +651,16 @@ typedef struct TurboJSAOTModuleInfo {
     uint32_t checksum;
 } TurboJSAOTModuleInfo;
 
+typedef struct TurboJSAOTLoadLimits {
+    size_t max_image_bytes;
+    size_t max_function_count;
+    size_t max_name_bytes;
+    size_t max_total_instructions;
+    size_t max_instructions_per_function;
+} TurboJSAOTLoadLimits;
+
+TurboJSAOTLoadLimits TurboJS_AOTLoadLimitsDefault(void);
+
 TurboJSIRStatus TurboJS_AOTSerializeModule(const TurboJSAOTModuleFunction *functions,
                                             size_t function_count,
                                             TurboJSAOTBuffer *out_buffer,
@@ -659,6 +669,9 @@ TurboJSIRStatus TurboJS_AOTDeserializeModule(const uint8_t *data,
                                               size_t size,
                                               TurboJSAOTModule *out_module,
                                               TurboJSIRDiagnostic *diagnostic);
+TurboJSIRStatus TurboJS_AOTDeserializeModuleWithLimits(
+    const uint8_t *data, size_t size, const TurboJSAOTLoadLimits *limits,
+    TurboJSAOTModule *out_module, TurboJSIRDiagnostic *diagnostic);
 const TurboJSAOTLoadedFunction *TurboJS_AOTFindFunction(const TurboJSAOTModule *module,
                                                         const char *name);
 void TurboJS_AOTModuleDestroy(TurboJSAOTModule *module);

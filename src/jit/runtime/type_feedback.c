@@ -8,9 +8,9 @@ static void observe(TurboJSFeedbackSlot *slot, uint32_t type)
     if (!slot || type == TURBOJS_FEEDBACK_NONE) return;
     before = slot->observed_types;
     slot->observed_types |= type;
-    slot->observations++;
+    if (slot->observations != UINT32_MAX) slot->observations++;
     if (before != 0 && before != slot->observed_types)
-        slot->transitions++;
+        if (slot->transitions != UINT32_MAX) slot->transitions++;
 }
 
 uint32_t TurboJS_FeedbackClassifyInteger(int64_t value)
@@ -34,7 +34,7 @@ void TurboJS_FeedbackObserveCall(TurboJSFeedbackVector *vector,
 {
     size_t i, count;
     if (!vector) return;
-    vector->execution_count++;
+    if (vector->execution_count != UINT32_MAX) vector->execution_count++;
     if (!arguments) return;
     count = argument_count < vector->argument_count ? argument_count : vector->argument_count;
     for (i = 0; i < count; i++)
@@ -49,12 +49,12 @@ void TurboJS_FeedbackObserveResult(TurboJSFeedbackVector *vector, int64_t result
 
 void TurboJS_FeedbackObserveBailout(TurboJSFeedbackVector *vector)
 {
-    if (vector) vector->bailout_count++;
+    if (vector && vector->bailout_count != UINT32_MAX) vector->bailout_count++;
 }
 
 void TurboJS_FeedbackObserveException(TurboJSFeedbackVector *vector)
 {
-    if (vector) vector->exception_count++;
+    if (vector && vector->exception_count != UINT32_MAX) vector->exception_count++;
 }
 
 int TurboJS_FeedbackSlotIsStable(const TurboJSFeedbackSlot *slot)

@@ -48,9 +48,25 @@ int main(void)
     CHECK(TurboJS_TieredInvoke(&tiered, cache, &ir, args, 2, &result, &route, &diagnostic) == TURBOJS_IR_OK);
     CHECK(route == TURBOJS_TIERED_NATIVE);
 
+    {
+        int keys[96];
+        size_t i;
+        const TurboJSNativeFunction *compiled = NULL;
+        for (i = 0; i < 96; ++i) {
+            keys[i] = (int)i;
+            CHECK(TurboJS_CodeCacheCompile(cache, &keys[i], &ir, &compiled, &diagnostic) == TURBOJS_IR_OK);
+            CHECK(compiled != NULL);
+        }
+        CHECK(TurboJS_CodeCacheLookup(cache, &keys[95]) != NULL);
+        CHECK(TurboJS_CodeCacheLookup(cache, &keys[0]) == NULL);
+        TurboJS_CodeCacheInvalidate(cache, &keys[95]);
+        CHECK(TurboJS_CodeCacheLookup(cache, &keys[95]) == NULL);
+    }
+
     stats = TurboJS_CodeCacheGetStats(cache);
-    CHECK(stats.entry_count == 1);
-    CHECK(stats.compilations == 1);
+    CHECK(stats.entry_count <= 2);
+    CHECK(stats.evictions > 0);
+    CHECK(stats.compilations == 97);
     CHECK(stats.hits >= 1);
     CHECK(stats.code_bytes > 0);
     printf("tiered cache passed: calls=%u hits=%llu misses=%llu code=%zu bytes\n",

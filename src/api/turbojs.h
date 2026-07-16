@@ -46,7 +46,7 @@ extern "C" {
 #endif /* defined(_WIN32) || defined(__CYGWIN__) */
 
 #if defined(__GNUC__) || defined(__clang__)
-# define QUICKJS_NG_CC_GNULIKE 1
+# define TURBOJS_CC_GNULIKE 1
 #endif /* defined(__GNUC__) || defined(__clang__) */
 
 /*
@@ -69,7 +69,7 @@ extern "C" {
 #  define JS_EXTERN /* nothing */
 # endif
 #else
-# if defined(BUILDING_QJS_SHARED) && defined(QUICKJS_NG_CC_GNULIKE)
+# if defined(BUILDING_QJS_SHARED) && defined(TURBOJS_CC_GNULIKE)
 #  define JS_EXTERN __attribute__((visibility("default")))
 # else
 #  define JS_EXTERN /* nothing */
@@ -100,17 +100,17 @@ extern "C" {
  * and other public functions of the binary modules. See examples/ for examples
  * of the usage.
  *
- * Windows note: -DQUICKJS_NG_MODULE_BUILD must be set when building a binary
+ * Windows note: -DTURBOJS_MODULE_BUILD must be set when building a binary
  * module to properly set __declspec.
  */
 #ifdef QUICKJS_NG_PLAT_WIN32
-# ifdef QUICKJS_NG_MODULE_BUILD
+# ifdef TURBOJS_MODULE_BUILD
 #  define JS_MODULE_EXTERN __declspec(dllexport)
 # else
 #  define JS_MODULE_EXTERN __declspec(dllimport)
 # endif
 #else
-# if defined(QUICKJS_NG_MODULE_BUILD) && defined(QUICKJS_NG_CC_GNULIKE)
+# if defined(TURBOJS_MODULE_BUILD) && defined(TURBOJS_CC_GNULIKE)
 #  define JS_MODULE_EXTERN __attribute__((visibility("default")))
 # else
 #  define JS_MODULE_EXTERN /* nothing */
@@ -155,7 +155,7 @@ extern "C" {
 #define JS_CALLX__(F, X, N, ...) JS_CALLX##N(F, X, __VA_ARGS__)
 #define JS_CALLX_(F, X, N, ...) JS_CALLX__(F, X, N, __VA_ARGS__)
 
-#undef QUICKJS_NG_CC_GNULIKE
+#undef TURBOJS_CC_GNULIKE
 #undef QUICKJS_NG_PLAT_WIN32
 
 typedef struct JSRuntime JSRuntime;

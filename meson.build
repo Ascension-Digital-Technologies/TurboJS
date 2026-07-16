@@ -217,12 +217,12 @@ turbojs_dependency = declare_dependency(
 
 if host_system != 'windows'
   turbojs_module_dependency = declare_dependency(
-    compile_args: [turbojs_dependency_args, '-DQUICKJS_NG_MODULE_BUILD'],
+    compile_args: [turbojs_dependency_args, '-DTURBOJS_MODULE_BUILD'],
     include_directories: include_directories('.'),
   )
 else
   turbojs_module_dependency = declare_dependency(
-    compile_args: [turbojs_dependency_args, '-DQUICKJS_NG_MODULE_BUILD'],
+    compile_args: [turbojs_dependency_args, '-DTURBOJS_MODULE_BUILD'],
     include_directories: include_directories('.'),
     # Windows can't resolve symbols at runtime thus we explicitly link to qjs.
     dependencies: turbojs_dependency,

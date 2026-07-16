@@ -39,6 +39,9 @@ TurboJSIRStatus TurboJS_AOTDeserializeIR(const uint8_t *data,size_t size,TurboJS
     if(get16(data+4)!=TURBOJS_AOT_FORMAT_VERSION)return fail(d,TURBOJS_IR_UNSUPPORTED,0,"unsupported AOT version");
     hs=get16(data+6);count=get32(data+8);is=get16(data+18);declared=get64(data+24);
     if(hs!=HEADER_SIZE||is!=INSTRUCTION_SIZE||declared!=size)return fail(d,TURBOJS_IR_INVALID_ARGUMENT,0,"invalid AOT layout");
+#if SIZE_MAX < UINT32_MAX
+    if ((size_t)count > (SIZE_MAX - HEADER_SIZE) / INSTRUCTION_SIZE) return fail(d,TURBOJS_IR_INVALID_ARGUMENT,0,"AOT instruction table overflow");
+#endif
     expected=HEADER_SIZE+(size_t)count*INSTRUCTION_SIZE;if(expected!=size)return fail(d,TURBOJS_IR_INVALID_ARGUMENT,0,"truncated AOT image");
     stored=get32(data+20);if(stored!=checksum(data+HEADER_SIZE,size-HEADER_SIZE))return fail(d,TURBOJS_IR_INVALID_ARGUMENT,0,"AOT checksum mismatch");
     TurboJS_IRFunctionInit(out,get16(data+14));out->register_count=get16(data+12);out->local_count=get16(data+16);

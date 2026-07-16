@@ -1,9 +1,11 @@
+#include <stdint.h>
 #include <string.h>
 #include "jit.h"
 
 static uint32_t default_opt_threshold(uint32_t baseline)
 {
-    uint32_t threshold = baseline ? baseline * 4u : 1000u;
+    uint32_t threshold = baseline > UINT32_MAX / 4u ? UINT32_MAX :
+        (baseline ? baseline * 4u : 1000u);
     return threshold < 1000u ? 1000u : threshold;
 }
 
@@ -92,7 +94,7 @@ TurboJSIRStatus TurboJS_TieredInvoke(TurboJSTieredFunction *function,
     if (!function || !cache || !ir || !result || !function->cache_key)
         return TURBOJS_IR_INVALID_ARGUMENT;
 
-    function->call_count++;
+    if (function->call_count != UINT32_MAX) function->call_count++;
     if (function->feedback.argument_count == 0)
         TurboJS_FeedbackVectorInit(&function->feedback, (uint16_t)argument_count);
     TurboJS_FeedbackObserveCall(&function->feedback, arguments, argument_count);

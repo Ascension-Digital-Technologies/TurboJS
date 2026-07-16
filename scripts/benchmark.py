@@ -19,6 +19,7 @@ DEFAULT_TARGETS = [
     "turbojs-runtime-safepoint-test",
     "turbojs-completion-pipeline-test",
     "turbojs-automatic-optimizing-tier-test",
+    "turbojs-tier-throughput-benchmark",
 ]
 
 

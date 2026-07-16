@@ -4,6 +4,8 @@
 
 TurboJS is designed for applications that need fast startup, controlled memory use, native embedding, and an execution pipeline that remains understandable. The project keeps cold code in the interpreter, promotes hot functions to a compact baseline compiler, and only invokes the optimizing tier when runtime feedback is stable.
 
+> **97%+ targeted core JavaScript coverage:** TurboJS passed **5,833 of 5,988 non-skipped executions (97.41%)** in the published 6,000-test Test262 core baseline. In the complete single-variant run, the JavaScript `language/` category passed **96.02%**. Intl, Temporal, and unsupported host hooks are reported separately so the scope remains explicit.
+
 > **Project status:** v1 engineering release. The numeric and runtime-helper JIT/AOT pipeline is implemented and tested. Unsupported optimized shapes safely remain in the baseline tier or interpreter. See [RELEASE_STATUS.md](RELEASE_STATUS.md) for exact scope and limitations.
 
 ## Highlights
@@ -116,6 +118,24 @@ python scripts/test.py --preset full-release
 scripts\run.bat build --preset jit-dev --fresh
 scripts\run.bat test --preset jit-dev
 ```
+
+## Test262 conformance suite
+
+Test262 is **not vendored** in source archives. Fetch or update it from the official TC39 repository when needed:
+
+```bash
+python scripts/fetch_test262.py
+```
+
+Then configure and run either profile:
+
+```bash
+cmake -S . -B build/test262 -DTURBOJS_BUILD_TEST262_RUNNER=ON
+cmake --build build/test262 --target run-test262-core
+cmake --build build/test262 --target run-test262
+```
+
+The fetched checkout lives at `third_party/test262/` and is ignored by Git.
 
 ## Developer workflow
 
@@ -266,3 +286,18 @@ Use [GitHub Discussions](SUPPORT.md) for usage questions and design conversation
 ## License
 
 A project license has not been selected in this repository snapshot. Select and add an OSI-approved `LICENSE` before publishing a public source release. Contributors should not assume redistribution rights until that file exists.
+
+## ECMAScript conformance with Test262
+
+TurboJS does not vendor the large TC39 Test262 checkout. Fetch it on demand, then use the metadata-aware parallel runner:
+
+```bash
+python scripts/fetch_test262.py
+cmake -S . -B build/test262 -DTURBOJS_BUILD_TEST262_RUNNER=ON
+cmake --build build/test262 --target run-test262-core
+```
+
+The runner supports strict/sloppy/module variants, harness includes, negative
+tests, timeouts, filtering, JSON reports, and deterministic sharding. See
+[`tests/test262/README.md`](tests/test262/README.md) and the checked-in
+[`BASELINE_RESULTS.md`](tests/test262/BASELINE_RESULTS.md).

@@ -1,24 +1,40 @@
 #include "jit.h"
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
-static int reserve_values(TurboJSSSAGraph *g, size_t n) {
-    size_t cap; void *p;
-    if (n <= g->value_capacity) return 1;
-    cap = g->value_capacity ? g->value_capacity * 2 : 32;
-    while (cap < n) cap *= 2;
-    p = realloc(g->values, cap * sizeof(*g->values));
-    if (!p) return 0;
-    g->values = p; g->value_capacity = cap; return 1;
+static int grow_array(void **memory, size_t *capacity, size_t required,
+                      size_t minimum, size_t element_size)
+{
+    size_t next = *capacity ? *capacity : minimum;
+    void *grown;
+    if (required <= *capacity)
+        return 1;
+    while (next < required) {
+        if (next > SIZE_MAX / 2)
+            return 0;
+        next <<= 1;
+    }
+    if (next > SIZE_MAX / element_size)
+        return 0;
+    grown = realloc(*memory, next * element_size);
+    if (!grown)
+        return 0;
+    *memory = grown;
+    *capacity = next;
+    return 1;
 }
-static int reserve_blocks(TurboJSSSAGraph *g, size_t n) {
-    size_t cap; void *p;
-    if (n <= g->block_capacity) return 1;
-    cap = g->block_capacity ? g->block_capacity * 2 : 8;
-    while (cap < n) cap *= 2;
-    p = realloc(g->blocks, cap * sizeof(*g->blocks));
-    if (!p) return 0;
-    g->blocks = p; g->block_capacity = cap; return 1;
+
+static int reserve_values(TurboJSSSAGraph *graph, size_t required)
+{
+    return grow_array((void **)&graph->values, &graph->value_capacity,
+                      required, 32, sizeof(*graph->values));
+}
+
+static int reserve_blocks(TurboJSSSAGraph *graph, size_t required)
+{
+    return grow_array((void **)&graph->blocks, &graph->block_capacity,
+                      required, 8, sizeof(*graph->blocks));
 }
 
 void TurboJS_SSAGraphInit(TurboJSSSAGraph *g) {
@@ -238,14 +254,175 @@ TurboJSIRStatus TurboJS_SSADetectLoops(TurboJSSSAGraph *g) {
     return TURBOJS_IR_OK;
 }
 
-static int is_const(const TurboJSSSAValue *v){return v->opcode==TURBOJS_SSA_CONSTANT_I64&&!v->removed;}
-TurboJSSSAOptimizationStats TurboJS_SSAOptimize(TurboJSSSAGraph *g) {
-    TurboJSSSAOptimizationStats s={0,0,0,0,0,0};size_t i;if(!g)return s;
-    for(i=0;i<g->value_count;i++){TurboJSSSAValue*v=&g->values[i];if(v->removed)continue;if((v->opcode==TURBOJS_SSA_ADD_I64||v->opcode==TURBOJS_SSA_SUB_I64||v->opcode==TURBOJS_SSA_MUL_I64||v->opcode==TURBOJS_SSA_LESS_THAN_I64)&&v->left<g->value_count&&v->right<g->value_count&&is_const(&g->values[v->left])&&is_const(&g->values[v->right])){int64_t a=g->values[v->left].immediate,b=g->values[v->right].immediate,r=v->opcode==TURBOJS_SSA_ADD_I64?a+b:v->opcode==TURBOJS_SSA_SUB_I64?a-b:v->opcode==TURBOJS_SSA_MUL_I64?a*b:a<b;if(g->values[v->left].use_count)g->values[v->left].use_count--;if(g->values[v->right].use_count)g->values[v->right].use_count--;v->opcode=TURBOJS_SSA_CONSTANT_I64;v->immediate=r;v->left=v->right=TURBOJS_SSA_NO_VALUE;s.constants_folded++;}
-        if((v->opcode==TURBOJS_SSA_BRANCH_TRUE||v->opcode==TURBOJS_SSA_BRANCH_FALSE)&&v->left<g->value_count&&is_const(&g->values[v->left])){int take=(g->values[v->left].immediate!=0);uint32_t chosen;if(v->opcode==TURBOJS_SSA_BRANCH_FALSE)take=!take;chosen=take?(uint32_t)v->immediate:(v->block+1);v->opcode=TURBOJS_SSA_JUMP;v->left=TURBOJS_SSA_NO_VALUE;v->immediate=(int64_t)chosen;if(v->block<g->block_count){g->blocks[v->block].successors[0]=chosen;g->blocks[v->block].successor_count=1;}s.branches_folded++;}}
-    mark_reachable(g);for(i=0;i<g->block_count;i++)if(!g->blocks[i].reachable&&!g->blocks[i].removed){g->blocks[i].removed=1;s.blocks_removed++;}
-    for(i=g->value_count;i>0;i--){TurboJSSSAValue*v=&g->values[i-1];if(!v->removed&&v->use_count==0&&v->opcode!=TURBOJS_SSA_RETURN&&v->opcode!=TURBOJS_SSA_ARGUMENT&&v->opcode!=TURBOJS_SSA_JUMP&&v->opcode!=TURBOJS_SSA_BRANCH_TRUE&&v->opcode!=TURBOJS_SSA_BRANCH_FALSE&&v->opcode!=TURBOJS_SSA_GUARD_INT32){v->removed=1;s.values_removed++;if(v->left<g->value_count&&g->values[v->left].use_count)g->values[v->left].use_count--;if(v->right<g->value_count&&g->values[v->right].use_count)g->values[v->right].use_count--;}}
-    return s;
+static int is_const(const TurboJSSSAValue *value)
+{
+    return value->opcode == TURBOJS_SSA_CONSTANT_I64 && !value->removed;
+}
+
+static int fold_binary(TurboJSSSAOpcode opcode, int64_t left, int64_t right,
+                       int64_t *result)
+{
+    switch (opcode) {
+    case TURBOJS_SSA_LESS_THAN_I64:
+        *result = left < right;
+        return 1;
+    case TURBOJS_SSA_ADD_I64:
+#if defined(__GNUC__) || defined(__clang__)
+        return !__builtin_add_overflow(left, right, result);
+#else
+        if ((right > 0 && left > INT64_MAX - right) ||
+            (right < 0 && left < INT64_MIN - right)) return 0;
+        *result = left + right;
+        return 1;
+#endif
+    case TURBOJS_SSA_SUB_I64:
+#if defined(__GNUC__) || defined(__clang__)
+        return !__builtin_sub_overflow(left, right, result);
+#else
+        if ((right < 0 && left > INT64_MAX + right) ||
+            (right > 0 && left < INT64_MIN + right)) return 0;
+        *result = left - right;
+        return 1;
+#endif
+    case TURBOJS_SSA_MUL_I64:
+#if defined(__GNUC__) || defined(__clang__)
+        return !__builtin_mul_overflow(left, right, result);
+#else
+        if (left == 0 || right == 0) { *result = 0; return 1; }
+        if (left == -1 && right == INT64_MIN) return 0;
+        if (right == -1 && left == INT64_MIN) return 0;
+        if (left > 0) {
+            if (right > 0) { if (left > INT64_MAX / right) return 0; }
+            else { if (right < INT64_MIN / left) return 0; }
+        } else {
+            if (right > 0) { if (left < INT64_MIN / right) return 0; }
+            else if (left != 0 && right < INT64_MAX / left) return 0;
+        }
+        *result = left * right;
+        return 1;
+#endif
+    default:
+        return 0;
+    }
+}
+
+static int removable_value(const TurboJSSSAValue *value)
+{
+    switch (value->opcode) {
+    case TURBOJS_SSA_RETURN:
+    case TURBOJS_SSA_ARGUMENT:
+    case TURBOJS_SSA_JUMP:
+    case TURBOJS_SSA_BRANCH_TRUE:
+    case TURBOJS_SSA_BRANCH_FALSE:
+    case TURBOJS_SSA_GUARD_INT32:
+        return 0;
+    default:
+        return 1;
+    }
+}
+
+TurboJSSSAOptimizationStats TurboJS_SSAOptimize(TurboJSSSAGraph *graph)
+{
+    TurboJSSSAOptimizationStats stats = {0, 0, 0, 0, 0, 0};
+    size_t i;
+    uint32_t *worklist;
+    size_t work_count = 0;
+
+    if (!graph)
+        return stats;
+
+    for (i = 0; i < graph->value_count; ++i) {
+        TurboJSSSAValue *value = &graph->values[i];
+        if (value->removed)
+            continue;
+        if ((value->opcode == TURBOJS_SSA_ADD_I64 ||
+             value->opcode == TURBOJS_SSA_SUB_I64 ||
+             value->opcode == TURBOJS_SSA_MUL_I64 ||
+             value->opcode == TURBOJS_SSA_LESS_THAN_I64) &&
+            value->left < graph->value_count &&
+            value->right < graph->value_count &&
+            is_const(&graph->values[value->left]) &&
+            is_const(&graph->values[value->right])) {
+            int64_t folded;
+            if (fold_binary(value->opcode,
+                            graph->values[value->left].immediate,
+                            graph->values[value->right].immediate,
+                            &folded)) {
+                if (graph->values[value->left].use_count)
+                    graph->values[value->left].use_count--;
+                if (graph->values[value->right].use_count)
+                    graph->values[value->right].use_count--;
+                value->opcode = TURBOJS_SSA_CONSTANT_I64;
+                value->immediate = folded;
+                value->left = TURBOJS_SSA_NO_VALUE;
+                value->right = TURBOJS_SSA_NO_VALUE;
+                stats.constants_folded++;
+            }
+        }
+        if ((value->opcode == TURBOJS_SSA_BRANCH_TRUE ||
+             value->opcode == TURBOJS_SSA_BRANCH_FALSE) &&
+            value->left < graph->value_count &&
+            is_const(&graph->values[value->left]) &&
+            value->block < graph->block_count) {
+            TurboJSSSABlock *block = &graph->blocks[value->block];
+            int take = graph->values[value->left].immediate != 0;
+            uint32_t chosen;
+            if (value->opcode == TURBOJS_SSA_BRANCH_FALSE)
+                take = !take;
+            chosen = take ? (uint32_t)value->immediate :
+                (block->successor_count > 1 ? block->successors[1] : TURBOJS_SSA_NO_BLOCK);
+            if (chosen < graph->block_count) {
+                if (graph->values[value->left].use_count)
+                    graph->values[value->left].use_count--;
+                value->opcode = TURBOJS_SSA_JUMP;
+                value->left = TURBOJS_SSA_NO_VALUE;
+                value->right = TURBOJS_SSA_NO_VALUE;
+                value->immediate = (int64_t)chosen;
+                block->successors[0] = chosen;
+                block->successor_count = 1;
+                stats.branches_folded++;
+            }
+        }
+    }
+
+    mark_reachable(graph);
+    for (i = 0; i < graph->block_count; ++i) {
+        if (!graph->blocks[i].reachable && !graph->blocks[i].removed) {
+            graph->blocks[i].removed = 1;
+            stats.blocks_removed++;
+        }
+    }
+
+    worklist = graph->value_count && graph->value_count <= SIZE_MAX / sizeof(*worklist) ?
+        (uint32_t *)malloc(graph->value_count * sizeof(*worklist)) : NULL;
+    if (!worklist && graph->value_count)
+        return stats;
+    for (i = 0; i < graph->value_count; ++i) {
+        TurboJSSSAValue *value = &graph->values[i];
+        if (!value->removed && value->use_count == 0 && removable_value(value))
+            worklist[work_count++] = (uint32_t)i;
+    }
+    while (work_count) {
+        TurboJSSSAValue *value = &graph->values[worklist[--work_count]];
+        uint32_t inputs[2] = { value->left, value->right };
+        unsigned input_index;
+        if (value->removed || value->use_count != 0 || !removable_value(value))
+            continue;
+        value->removed = 1;
+        stats.values_removed++;
+        for (input_index = 0; input_index < 2; ++input_index) {
+            uint32_t input = inputs[input_index];
+            if (input < graph->value_count && graph->values[input].use_count) {
+                graph->values[input].use_count--;
+                if (graph->values[input].use_count == 0 &&
+                    !graph->values[input].removed &&
+                    removable_value(&graph->values[input]))
+                    worklist[work_count++] = input;
+            }
+        }
+    }
+    free(worklist);
+    return stats;
 }
 int TurboJS_SSAVerify(const TurboJSSSAGraph *g) {
     size_t i;uint32_t j;if(!g||!g->block_count||g->entry_block>=g->block_count)return 0;for(i=0;i<g->block_count;i++){const TurboJSSSABlock*b=&g->blocks[i];if(b->id!=i||b->predecessor_count>TURBOJS_SSA_MAX_BLOCK_EDGES||b->successor_count>TURBOJS_SSA_MAX_BLOCK_EDGES)return 0;for(j=0;j<b->successor_count;j++)if(b->successors[j]>=g->block_count)return 0;}
