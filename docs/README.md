@@ -1,11 +1,10 @@
-# Documentation
+# TurboJS Documentation
 
-Architecture explains why the engine is structured as it is; development covers repeatable workflows; specifications define versioned external artifacts and ABIs.
+## Start here
 
-## Rules
+- [`architecture/`](architecture/) — parser, bytecode, runtime, interpreter, JIT, and AOT design.
+- [`development/`](development/) — build, test, benchmark, and contributor workflows.
+- [`specifications/`](specifications/) — versioned bytecode, module, and ABI contracts.
+- [Release status](status/release-status.md) — implemented scope, current limitations, and validation evidence.
 
-Update documentation in the same change as behavior. Specifications must identify versions, bounds, integrity checks, and compatibility rules.
-
-## Related documentation
-
-Start with the [repository README](../README.md) and `docs/architecture/` for detailed design notes.
+The root [README](../README.md) contains the quickest build path and the current compatibility summary. Detailed documents should describe current behavior; historical evidence belongs under `docs/status/` or in the changelog.

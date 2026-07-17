@@ -6,7 +6,7 @@ TurboJS is designed for applications that need fast startup, controlled memory u
 
 > **97%+ targeted core JavaScript coverage:** TurboJS passed **5,833 of 5,988 non-skipped executions (97.41%)** in the published 6,000-test Test262 core baseline. In the complete single-variant run, the JavaScript `language/` category passed **96.02%**. Intl, Temporal, and unsupported host hooks are reported separately so the scope remains explicit.
 
-> **Project status:** v1 engineering release. The numeric and runtime-helper JIT/AOT pipeline is implemented and tested. Unsupported optimized shapes safely remain in the baseline tier or interpreter. See [RELEASE_STATUS.md](RELEASE_STATUS.md) for exact scope and limitations.
+> **Project status:** v1 engineering release. The numeric and runtime-helper JIT/AOT pipeline is implemented and tested. Unsupported optimized shapes safely remain in the baseline tier or interpreter. See [docs/status/release-status.md](docs/status/release-status.md) for exact scope and limitations.
 
 ## Highlights
 
@@ -60,7 +60,6 @@ src/
   unicode/             Unicode tables and algorithms
   jit/                 Baseline JIT, SSA optimizer, AOT, deopt, and cache
   generated/           Reproducible generated engine sources
-examples/              Embedding, JIT, and profiling examples
 tests/                 Unit, differential, VM, JIT, and AOT tests
 tools/                 Generators, validation, amalgamation, and AOT tools
 scripts/               Cross-platform developer workflow
@@ -281,7 +280,7 @@ Do not report security vulnerabilities in public issues. Follow [SECURITY.md](SE
 
 ## Support and project scope
 
-Use [GitHub Discussions](SUPPORT.md) for usage questions and design conversations; use issues for reproducible defects and scoped feature work. The exact supported v1 surface and deferred work are documented in [RELEASE_STATUS.md](RELEASE_STATUS.md).
+Use [GitHub Discussions](SUPPORT.md) for usage questions and design conversations; use issues for reproducible defects and scoped feature work. The exact supported v1 surface and deferred work are documented in [docs/status/release-status.md](docs/status/release-status.md).
 
 ## License
 
@@ -301,3 +300,7 @@ The runner supports strict/sloppy/module variants, harness includes, negative
 tests, timeouts, filtering, JSON reports, and deterministic sharding. See
 [`tests/test262/README.md`](tests/test262/README.md) and the checked-in
 [`BASELINE_RESULTS.md`](tests/test262/BASELINE_RESULTS.md).
+
+## Documentation
+
+Start with the [documentation index](docs/README.md) for current guides and technical reference.

@@ -1,3 +1,7 @@
+# Changelog
+
+All notable changes to TurboJS are recorded here.
+
 ## Unreleased
 
 ### Performance and hardening
@@ -9,13 +13,10 @@
 - Hardened SSA capacity growth and AOT module size validation.
 - Rejected duplicate and embedded-NUL AOT export names.
 - Added code-cache stress and optimizer overflow regression coverage.
-- Added `PROJECT_AUDIT.md` with prioritized remaining risks.
+- Added `docs/status/project-audit.md` with prioritized remaining risks.
 
-# Changelog
 
-All notable changes will be documented here after the first tagged release.
-
-## Unreleased
+### Repository maintenance
 
 - Prepared the repository for GitHub publication.
 - Added detailed project, contribution, security, support, architecture, and subsystem documentation.
