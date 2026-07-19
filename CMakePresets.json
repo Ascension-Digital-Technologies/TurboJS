@@ -10,7 +10,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "TURBOJS_BUILD_TESTS": "ON",
         "TURBOJS_BUILD_ENGINE_TESTS": "OFF",
-        "TURBOJS_BUILD_EXAMPLES": "ON",
+        "TURBOJS_ENABLE_OPTIMIZING_JIT": "ON",
         "TURBOJS_ENABLE_INSTALL": "OFF"
       }
     },
@@ -23,24 +23,37 @@
         "CMAKE_BUILD_TYPE": "Release",
         "TURBOJS_BUILD_TESTS": "ON",
         "TURBOJS_BUILD_ENGINE_TESTS": "ON",
-        "TURBOJS_BUILD_EXAMPLES": "ON"
+        "TURBOJS_ENABLE_OPTIMIZING_JIT": "ON"
       }
     }
   ],
   "buildPresets": [
-    { "name": "jit-dev", "configurePreset": "jit-dev", "targets": ["turbojs-jit-tests"] },
-    { "name": "full-release", "configurePreset": "full-release" }
+    {
+      "name": "jit-dev",
+      "configurePreset": "jit-dev",
+      "targets": [
+        "turbojs-jit-tests"
+      ]
+    },
+    {
+      "name": "full-release",
+      "configurePreset": "full-release"
+    }
   ],
   "testPresets": [
     {
       "name": "jit-dev",
       "configurePreset": "jit-dev",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     },
     {
       "name": "full-release",
       "configurePreset": "full-release",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }

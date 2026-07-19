@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_FOUNDATION_TYPES_H
-#define QJS_INTERNAL_FOUNDATION_TYPES_H
+#ifndef TURBOJS_INTERNAL_FOUNDATION_TYPES_H
+#define TURBOJS_INTERNAL_FOUNDATION_TYPES_H
 
 /*
  * Shared private engine data model.
@@ -320,10 +320,107 @@ struct JSRuntime {
     /* TurboJS baseline JIT state. Kept runtime-owned so native code never
        outlives the engine instance that created it. */
     void *jit_code_cache;
+    void *jit_float_code_cache;
     uint32_t jit_compile_threshold;
+    uint32_t jit_optimizing_threshold;
+    uint32_t jit_osr_threshold;
+    uint8_t jit_enabled;
+    uint8_t jit_optimizing_enabled;
+    uint8_t jit_osr_enabled;
+    uint8_t jit_profiling_enabled;
     uint64_t jit_interpreted_calls;
     uint64_t jit_native_calls;
     uint64_t jit_guard_failures;
+    uint64_t baseline_compile_requests;
+    uint64_t baseline_compilations;
+    uint64_t baseline_compile_failures;
+    uint64_t optimizing_compile_requests;
+    uint64_t optimizing_compilations;
+    uint64_t optimizing_compile_failures;
+    uint64_t tier_up_requests;
+    uint64_t tier_up_successes;
+    uint64_t deoptimizations;
+    uint64_t region_compilations;
+    uint64_t region_native_calls;
+    uint64_t region_compile_failures;
+    uint64_t property_ic_hits;
+    uint64_t property_ic_misses;
+    uint64_t property_ic_fills;
+    uint64_t call_feedback_observations;
+    uint64_t call_feedback_monomorphic;
+    uint64_t call_feedback_polymorphic;
+    uint64_t call_feedback_megamorphic;
+    uint64_t call_feedback_transitions;
+    uint64_t relay_call_hits;
+    uint64_t relay_call_misses;
+    uint64_t relay_call_installs;
+    uint64_t relay_call_invalidations;
+    uint64_t relay_spool_hits;
+    uint64_t relay_spool_misses;
+    uint64_t relay_spool_installs;
+    uint64_t relay_spool_invalidations;
+    uint64_t relay_spool_feedback_installs;
+    uint64_t relay_spool_feedback_rejections;
+    uint64_t relay_spool_stale_bailouts;
+    uint64_t relay_spool_callee_bailouts;
+    uint64_t spool_call_lowering_resolved;
+    uint64_t spool_call_lowering_rejected;
+    uint64_t jit_next_function_identity;
+    /* Weak registry used to resolve Telemetry identities during Spool lowering.
+       Entries are unlinked before bytecode destruction. */
+    struct JSFunctionBytecode *jit_function_registry;
+    uint64_t dense_array_load_hits;
+    uint64_t dense_array_store_hits;
+    uint64_t dense_array_slow_paths;
+    uint64_t dense_array_osr_entries;
+    uint64_t dense_array_osr_elements;
+    uint64_t dense_array_osr_unrolled_blocks;
+    uint64_t dense_array_osr_multi_lane_blocks;
+    uint64_t dense_array_osr_float_promotions;
+    uint64_t dense_array_transform_osr_entries;
+    uint64_t dense_array_transform_osr_elements;
+    uint64_t dense_array_inplace_osr_entries;
+    uint64_t dense_array_binary_osr_entries;
+    uint64_t dense_array_copy_osr_entries;
+    uint64_t dense_array_fill_osr_entries;
+    uint64_t typed_array_osr_entries;
+    uint64_t typed_array_osr_elements;
+    uint64_t typed_array_simd_elements;
+    uint64_t typed_array_simd_sse2_entries;
+    uint64_t typed_array_simd_avx2_entries;
+    uint64_t holey_array_osr_entries;
+    uint64_t holey_array_osr_elements;
+    uint64_t typed_array_affine_sum_osr_entries;
+    uint64_t typed_array_affine_sum_osr_elements;
+    uint64_t object_array_osr_entries;
+    uint64_t object_array_osr_elements;
+    uint64_t object_array_polymorphic_osr_entries;
+    uint64_t object_array_update_osr_entries;
+    uint64_t object_array_grouped_osr_entries;
+    uint64_t object_array_grouped_osr_elements;
+    uint64_t osr_backedges;
+    uint64_t osr_compile_requests;
+    uint64_t osr_compilations;
+    uint64_t osr_compile_failures;
+    uint64_t osr_frame_captures;
+    uint64_t osr_entries;
+    uint64_t osr_bailouts;
+    uint64_t osr_negative_cache_hits;
+    uint64_t osr_rejections_unsupported;
+    uint64_t osr_rejections_allocation;
+    uint64_t osr_rejections_backend;
+    uint64_t osr_leaf_call_entries;
+    uint64_t osr_leaf_call_iterations;
+    uint64_t osr_int32_mix_entries;
+    uint64_t osr_int32_mix_iterations;
+    uint64_t osr_polymorphic_leaf_entries;
+    uint64_t osr_polymorphic_leaf_iterations;
+    uint64_t osr_closure_call_entries;
+    uint64_t osr_closure_call_iterations;
+    uint64_t osr_recursive_call_entries;
+    uint64_t osr_recursive_call_iterations;
+    uint64_t osr_coupled_float_entries;
+    uint64_t osr_coupled_float_iterations;
 };
 
 struct JSClass {
@@ -742,6 +839,91 @@ typedef enum JSFunctionKindEnum {
     JS_FUNC_ASYNC_GENERATOR = (JS_FUNC_GENERATOR | JS_FUNC_ASYNC),
 } JSFunctionKindEnum;
 
+#define TURBOJS_VM_PROPERTY_IC_SIZE 16u
+#define TURBOJS_VM_PROPERTY_IC_WAYS 4u
+#define TURBOJS_VM_CALL_FEEDBACK_SIZE 16u
+#define TURBOJS_VM_RELAY_CALL_IC_SIZE 16u
+#define TURBOJS_VM_OSR_SITE_COUNT 8u
+
+typedef struct TurboJSVMPropertyICWay {
+    JSShape *shape;
+    uint32_t property_index;
+} TurboJSVMPropertyICWay;
+
+typedef struct TurboJSVMPropertyICEntry {
+    uint32_t bytecode_offset;
+    JSAtom atom;
+    uint8_t used_ways;
+    uint8_t replacement_way;
+    uint8_t hot_way;
+    uint8_t reserved;
+    JSObject *last_object;
+    JSShape *last_shape;
+    uint32_t last_property_index;
+    uint32_t last_reserved;
+    TurboJSVMPropertyICWay ways[TURBOJS_VM_PROPERTY_IC_WAYS];
+} TurboJSVMPropertyICEntry;
+
+typedef struct TurboJSVMCallFeedbackEntry {
+    uint32_t bytecode_offset;
+    uint32_t reserved;
+    TurboJSCallFeedbackSlot slot;
+} TurboJSVMCallFeedbackEntry;
+
+typedef enum TurboJSVMRelayCallKind {
+    TURBOJS_VM_RELAY_CALL_EMPTY = 0,
+    TURBOJS_VM_RELAY_CALL_AFFINE_LEAF = 1,
+    TURBOJS_VM_RELAY_CALL_GENERIC_LEAF = 2,
+    TURBOJS_VM_RELAY_CALL_SPOOL_INT32 = 3,
+    TURBOJS_VM_RELAY_CALL_SPOOL_FLOAT64 = 4,
+    TURBOJS_VM_RELAY_CALL_DISABLED = 255
+} TurboJSVMRelayCallKind;
+
+typedef struct TurboJSVMRelayCallICEntry {
+    uint32_t bytecode_offset;
+    uint32_t hits;
+    uint32_t misses;
+    uint32_t generation;
+    uint64_t target_identity;
+    uint64_t native_generation;
+    uint64_t secondary_target_identity;
+    uint64_t secondary_native_generation;
+    uint8_t kind;
+    uint8_t secondary_kind;
+    uint8_t reserved[6];
+} TurboJSVMRelayCallICEntry;
+
+typedef struct TurboJSDenseArrayOSRProgram TurboJSDenseArrayOSRProgram;
+typedef struct TurboJSDenseArrayTransformOSRProgram TurboJSDenseArrayTransformOSRProgram;
+typedef struct TurboJSObjectPropertyOSRProgram TurboJSObjectPropertyOSRProgram;
+typedef struct TurboJSScalarLoopOSRProgram TurboJSScalarLoopOSRProgram;
+typedef struct TurboJSTypedArrayAffineSumOSRProgram TurboJSTypedArrayAffineSumOSRProgram;
+typedef struct TurboJSObjectArrayOSRProgram TurboJSObjectArrayOSRProgram;
+
+typedef enum TurboJSVMOSRRejectionReason {
+    TURBOJS_VM_OSR_REJECT_NONE = 0,
+    TURBOJS_VM_OSR_REJECT_UNSUPPORTED = 1,
+    TURBOJS_VM_OSR_REJECT_ALLOCATION = 2,
+    TURBOJS_VM_OSR_REJECT_BACKEND = 3
+} TurboJSVMOSRRejectionReason;
+
+typedef struct TurboJSVMOSRSite {
+    uint32_t target_offset;
+    uint32_t source_offset;
+    TurboJSOSRState state;
+    uint64_t frame_captures;
+    TurboJSOSRLoopProgram *program;
+    TurboJSDenseArrayOSRProgram *dense_program;
+    TurboJSDenseArrayTransformOSRProgram *transform_program;
+    TurboJSObjectPropertyOSRProgram *object_program;
+    TurboJSScalarLoopOSRProgram *scalar_program;
+    TurboJSTypedArrayAffineSumOSRProgram *typed_sum_program;
+    TurboJSObjectArrayOSRProgram *object_array_program;
+    uint8_t program_kind;
+    uint8_t rejection_reason;
+    uint8_t reserved_program[6];
+} TurboJSVMOSRSite;
+
 typedef struct JSFunctionBytecode {
     JSGCObjectHeader header; /* must come first */
     uint8_t is_strict_mode : 1;
@@ -782,8 +964,43 @@ typedef struct JSFunctionBytecode {
     /* Per-function tier metadata. The native allocation itself is owned by
        JSRuntime.jit_code_cache and keyed by this bytecode object. */
     uint32_t jit_call_count;
+    uint32_t jit_float_call_count;
+    uint32_t jit_region_call_count;
+    void *jit_region_native;
     uint8_t jit_compilation_attempted;
-    uint8_t jit_reserved[3];
+    uint8_t jit_float_compilation_attempted;
+    uint8_t jit_region_compilation_attempted;
+    uint8_t jit_reserved;
+    /* Phase 73: cached eligibility for the tiny numeric leaf inliner.
+       0 = unknown, 1 = eligible, 2 = permanently unsupported. */
+    uint8_t jit_inline_leaf_state;
+    void *jit_inline_leaf_plan;
+    /* Generation-checked Spool entries. Vault invalidates these handles before
+       releasing executable memory, so Relay never retains a dangling native
+       code pointer across cache eviction or explicit cache clearing. */
+    TurboJSNativeEntryHandle jit_spool_int32_entry;
+    TurboJSNativeEntryHandle jit_spool_float64_entry;
+    /* Stable process-local identity used by Telemetry call-site feedback.
+       The feedback cache stores only this integer, never a dangling pointer. */
+    uint64_t jit_identity;
+    struct JSFunctionBytecode *jit_registry_prev;
+    struct JSFunctionBytecode *jit_registry_next;
+
+    /* Lazily allocated direct-mapped property inline caches. Entries retain
+       their expected immutable shape and are released with the bytecode. */
+    TurboJSVMPropertyICEntry *property_ic;
+    /* Telemetry target history for call sites. Target identities are weak,
+       process-local integers and therefore need no GC tracing. The bounded
+       budget freezes collection after warm-up so long-running calls do not
+       pay perpetual profiling overhead. */
+    TurboJSVMCallFeedbackEntry *call_feedback;
+    uint32_t jit_call_feedback_remaining;
+    /* Relay call ICs are independent of Redline Telemetry. They are installed
+       only after a verified tiny-leaf fast path succeeds, so unrelated call
+       sites pay only a predictable null-pointer branch. Entries retain only
+       stable numeric identities and never own callee pointers. */
+    TurboJSVMRelayCallICEntry *relay_call_ic;
+    TurboJSVMOSRSite osr_sites[TURBOJS_VM_OSR_SITE_COUNT];
 } JSFunctionBytecode;
 
 typedef struct JSBoundFunction {

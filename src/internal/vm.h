@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_VM_H
-#define QJS_INTERNAL_VM_H
+#ifndef TURBOJS_INTERNAL_VM_H
+#define TURBOJS_INTERNAL_VM_H
 
 /*
  * Ownership boundary: vm subsystem.

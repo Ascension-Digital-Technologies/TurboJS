@@ -2,9 +2,38 @@
 
 ## Start here
 
-- [`architecture/`](architecture/) — parser, bytecode, runtime, interpreter, JIT, and AOT design.
-- [`development/`](development/) — build, test, benchmark, and contributor workflows.
-- [`specifications/`](specifications/) — versioned bytecode, module, and ABI contracts.
-- [Release status](status/release-status.md) — implemented scope, current limitations, and validation evidence.
+- [Project status](project/STATUS.md)
+- [Completion roadmap](project/ROADMAP.md)
+- [Architecture overview](architecture/overview.md)
+- [Building](development/building.md)
+- [Repository layout](development/repository-layout.md)
+- [Testing](development/testing.md)
+- [Benchmark methodology](performance/BENCHMARKING.md)
 
-The root [README](../README.md) contains the quickest build path and the current compatibility summary. Detailed documents should describe current behavior; historical evidence belongs under `docs/status/` or in the changelog.
+## Architecture
+
+The `architecture/` directory documents stable subsystems and design contracts. Phase-specific experiments should not be added there unless they become part of the supported architecture.
+
+## Development
+
+The `development/` directory contains build, testing, contribution, debugging, and release workflow documentation.
+
+## Performance
+
+- `performance/BENCHMARKING.md` defines the current benchmark methodology.
+- `performance/history/` stores historical phase reports for traceability.
+- Historical reports are evidence, not current product claims.
+
+## Project records
+
+The `project/` directory contains the current status and historical audit material.
+
+## Platform notes
+
+Platform-specific implementation and troubleshooting notes live under `platforms/`.
+
+## Specifications
+
+Versioned file formats, ABI contracts, and artifact specifications live under `specifications/`.
+
+- [Execution pipeline](architecture/execution-pipeline.md)

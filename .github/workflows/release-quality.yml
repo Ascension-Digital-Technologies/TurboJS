@@ -1,0 +1,60 @@
+name: Release quality
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1'
+
+jobs:
+  warnings-and-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure
+        run: cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release -DTURBOJS_BUILD_WERROR=ON
+      - name: Build
+        run: cmake --build build/release --parallel
+      - name: Test
+        run: ctest --test-dir build/release --output-on-failure
+      - name: Install smoke test
+        run: cmake --install build/release --prefix build/stage
+      - name: Architecture validation
+        run: python tools/validation/check_architecture.py
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ASan + UBSan configure
+        run: cmake -S . -B build/sanitize -DCMAKE_BUILD_TYPE=Debug -DTURBOJS_ENABLE_ASAN=ON -DTURBOJS_ENABLE_UBSAN=ON
+      - name: Build
+        run: cmake --build build/sanitize --parallel
+      - name: Test
+        run: ctest --test-dir build/sanitize --output-on-failure
+
+  arm64-cross-qualification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install AArch64 toolchain and emulator
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user
+      - name: Configure ARM64
+        run: |
+          cat > build-arm64-toolchain.cmake <<'TC'
+          set(CMAKE_SYSTEM_NAME Linux)
+          set(CMAKE_SYSTEM_PROCESSOR aarch64)
+          set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+          set(CMAKE_CROSSCOMPILING_EMULATOR qemu-aarch64;-L;/usr/aarch64-linux-gnu)
+          TC
+          cmake -S . -B build/arm64 -DCMAKE_BUILD_TYPE=Release -DTURBOJS_BUILD_WERROR=ON -DCMAKE_TOOLCHAIN_FILE=$PWD/build-arm64-toolchain.cmake
+      - name: Build ARM64
+        run: cmake --build build/arm64 --parallel
+      - name: Execute ARM64 backend tests
+        run: ctest --test-dir build/arm64 -R 'turbojs.jit.arm64' --output-on-failure

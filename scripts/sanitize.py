@@ -32,7 +32,6 @@ def main() -> int:
         "-DCMAKE_BUILD_TYPE=Debug",
         "-DTURBOJS_BUILD_TESTS=ON",
         "-DTURBOJS_BUILD_ENGINE_TESTS=OFF",
-        "-DTURBOJS_BUILD_EXAMPLES=OFF",
         f"-DCMAKE_C_FLAGS={flags}",
         f"-DCMAKE_EXE_LINKER_FLAGS={flags}",
     ])

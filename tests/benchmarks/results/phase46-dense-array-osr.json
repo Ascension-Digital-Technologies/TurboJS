@@ -1,0 +1,13 @@
+{
+  "phase": "46",
+  "workload": "dense_array_osr.js",
+  "description": "1,000,000 packed integer elements reduced 20 times after construction",
+  "runs": {
+    "phase45_turbojs_median_ms": 924.583332,
+    "phase46_turbojs_median_ms": 133.853382,
+    "node_v8_median_ms": 117.736069
+  },
+  "phase46_speedup_vs_phase45": 6.907433478221716,
+  "node_speedup_vs_phase46": 1.1368935886588842,
+  "output": "10227419520"
+}

@@ -6,8 +6,41 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
 {
     int i;
 
+    turbojs_vm_function_identity_unregister(rt, b);
+
     if (rt->jit_code_cache)
         TurboJS_CodeCacheInvalidate((TurboJSCodeCache *)rt->jit_code_cache, b);
+    if (rt->jit_float_code_cache)
+        TurboJS_CodeCacheInvalidate((TurboJSCodeCache *)rt->jit_float_code_cache, b);
+    if (b->jit_region_native) {
+        TurboJS_RegionNativeFunctionDestroy((TurboJSRegionNativeFunction *)b->jit_region_native);
+        b->jit_region_native = NULL;
+    }
+
+    if (b->jit_inline_leaf_plan) {
+        js_free_rt(rt, b->jit_inline_leaf_plan);
+        b->jit_inline_leaf_plan = NULL;
+    }
+
+    turbojs_vm_property_ic_destroy(rt, b);
+    turbojs_vm_call_feedback_destroy(rt, b);
+    turbojs_vm_relay_call_ic_destroy(rt, b);
+    for (i = 0; i < TURBOJS_VM_OSR_SITE_COUNT; ++i) {
+        if (b->osr_sites[i].program)
+            TurboJS_OSRLoopProgramDestroy(b->osr_sites[i].program);
+        if (b->osr_sites[i].dense_program)
+            js_free_rt(rt, b->osr_sites[i].dense_program);
+        if (b->osr_sites[i].transform_program)
+            js_free_rt(rt, b->osr_sites[i].transform_program);
+        if (b->osr_sites[i].object_program)
+            js_free_rt(rt, b->osr_sites[i].object_program);
+        if (b->osr_sites[i].scalar_program)
+            js_free_rt(rt, b->osr_sites[i].scalar_program);
+        if (b->osr_sites[i].typed_sum_program)
+            js_free_rt(rt, b->osr_sites[i].typed_sum_program);
+        if (b->osr_sites[i].object_array_program)
+            js_free_rt(rt, b->osr_sites[i].object_array_program);
+    }
 
     if (b->byte_code_buf)
         free_bytecode_atoms(rt, b->byte_code_buf, b->byte_code_len, true);
@@ -40,7 +73,7 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
     }
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 static __exception int js_parse_directives(JSParseState *s)
 {
@@ -933,5 +966,5 @@ static __exception int js_parse_program(JSParseState *s)
     return 0;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 

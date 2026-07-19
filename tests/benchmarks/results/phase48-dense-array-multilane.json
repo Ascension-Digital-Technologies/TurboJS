@@ -1,0 +1,11 @@
+{
+  "phase": 48,
+  "workload": "dense_array_osr",
+  "description": "1,000,000 packed integer elements reduced 20 times; 2 warmups and 9 measured full-process runs",
+  "turbojs_median_ms": 126.10869200034358,
+  "node_v8_median_ms": 120.74195799959853,
+  "turbojs_to_node_ratio": 1.0444479623294074,
+  "phase47_turbojs_median_ms": 127.93,
+  "phase47_to_phase48_improvement_percent": 1.423434690846557,
+  "notes": "TurboJS uses a four-lane packed-int OSR accumulator with transactional overflow and layout bailout."
+}

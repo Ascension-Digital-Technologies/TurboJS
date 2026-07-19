@@ -1,0 +1,51 @@
+{
+  "TurboJS": {
+    "runs": 15,
+    "warmups": 5,
+    "int32_dynamic_bound": {
+      "median_ms": 539.6380589995533,
+      "min_ms": 523.0519030001014,
+      "max_ms": 572.1801420003176,
+      "checksum": -30213900480
+    },
+    "float64_dynamic_bound": {
+      "median_ms": 37.41437500156462,
+      "min_ms": 36.85638100095093,
+      "max_ms": 38.07471000030637,
+      "checksum": 4865435.806338395
+    },
+    "affine_call_dynamic_bound": {
+      "median_ms": 324.20682800002396,
+      "min_ms": 316.86040600016713,
+      "max_ms": 330.1927170008421,
+      "checksum": 562499812500000
+    }
+  },
+  "Node/V8": {
+    "runs": 15,
+    "warmups": 5,
+    "int32_dynamic_bound": {
+      "median_ms": 5.448621000000003,
+      "min_ms": 5.42698900000002,
+      "max_ms": 5.583048999999988,
+      "checksum": -30213900480
+    },
+    "float64_dynamic_bound": {
+      "median_ms": 5.16497099999998,
+      "min_ms": 5.155377999999985,
+      "max_ms": 5.206473000000017,
+      "checksum": 4865435.806338395
+    },
+    "affine_call_dynamic_bound": {
+      "median_ms": 4.77813100000003,
+      "min_ms": 4.748377000000005,
+      "max_ms": 4.973549999999989,
+      "checksum": 562499812500000
+    }
+  },
+  "ratios": {
+    "int32_dynamic_bound": 99.04121776859742,
+    "float64_dynamic_bound": 7.243869326965198,
+    "affine_call_dynamic_bound": 67.85222673886963
+  }
+}

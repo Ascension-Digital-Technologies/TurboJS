@@ -1,11 +1,5 @@
-# Public API
+# API implementations
 
-Supported embedding headers and API-level implementation. Changes here affect embedders and require documentation, lifecycle tests, and compatibility review. `legacy_api.c` centralizes the remaining API adaptation implementation without restoring compatibility headers.
+This directory implements the stable embedding facade and optional libc integration. Supported public declarations are owned by `include/turbojs/`; this directory contains implementation only.
 
-## Rules
-
-Do not expose JIT backend structures, GC internals, or parser state through this directory.
-
-## Related documentation
-
-Start with the [repository README](../../README.md) and `docs/architecture/` for detailed design notes.
+Changes here require embedding tests, lifecycle review, and API/ABI compatibility review. JIT backend structures, GC internals, parser state, and private engine types must not leak through these files.

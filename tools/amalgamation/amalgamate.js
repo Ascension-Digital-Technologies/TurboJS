@@ -1,4 +1,4 @@
-import {loadFile, writeFile} from "qjs:std"
+import {loadFile, writeFile} from "turbojs:std"
 
 const cutils_h = loadFile("src/internal/cutils.h")
 const dtoa_c = loadFile("src/numeric/dtoa.c")
@@ -11,15 +11,15 @@ const libunicode_h = loadFile("src/unicode/unicode.h")
 const libunicode_table_h = loadFile("src/unicode/unicode_tables.h")
 const list_h = loadFile("src/internal/list.h")
 const atom_defs_h = loadFile("src/internal/atom_defs.h")
-const turbojs_engine_c = loadFile("src/api/legacy_api.c")
+const turbojs_engine_c = loadFile("tools/amalgamation/engine_unit.c")
 const atomics_h = loadFile("src/internal/atomics_compat.h")
-const turbojs_h = loadFile("src/api/turbojs.h")
-const turbojs_libc_c = loadFile("runtime/libc/turbojs-libc.c")
-const turbojs_libc_h = loadFile("src/api/turbojs-libc.h")
+const turbojs_h = loadFile("include/turbojs/turbojs.h")
+const turbojs_libc_c = loadFile("src/api/turbojs-libc.c")
+const turbojs_libc_h = loadFile("include/turbojs/turbojs-libc.h")
 const bytecode_opcodes_h = loadFile("src/internal/bytecode_opcodes.h")
-const gen_builtin_array_fromasync_h = loadFile("src/generated/builtins/array_fromasync.h")
-const gen_builtin_iterator_zip_h = loadFile("src/generated/builtins/iterator_zip.h")
-const gen_builtin_iterator_zip_keyed_h = loadFile("src/generated/builtins/iterator_zip_keyed.h")
+const gen_builtin_array_fromasync_h = loadFile("generated/builtins/array_fromasync.h")
+const gen_builtin_iterator_zip_h = loadFile("generated/builtins/iterator_zip.h")
+const gen_builtin_iterator_zip_keyed_h = loadFile("generated/builtins/iterator_zip_keyed.h")
 
 let source = "#if defined(TURBOJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU_SOURCE)\n"
            + "#define _GNU_SOURCE\n"
@@ -43,11 +43,11 @@ let source = "#if defined(TURBOJS_BUILD_LIBC) && defined(__linux__) && !defined(
 source = source.replace(/#include "atom_defs.h"/g, atom_defs_h)
 source = source.replace(/#include "bytecode_opcodes.h"/g, bytecode_opcodes_h)
 source = source.replace(/#include "src/regexp/regexp_opcode.h"/g, libregexp_opcode_h)
-source = source.replace(/#include "src/generated/builtins/array_fromasync.h"/g,
+source = source.replace(/#include "generated/builtins/array_fromasync.h"/g,
                         gen_builtin_array_fromasync_h)
-source = source.replace(/#include "src/generated/builtins/iterator_zip.h"/g,
+source = source.replace(/#include "generated/builtins/iterator_zip.h"/g,
                         gen_builtin_iterator_zip_h)
-source = source.replace(/#include "src/generated/builtins/iterator_zip_keyed.h"/g,
+source = source.replace(/#include "generated/builtins/iterator_zip_keyed.h"/g,
                         gen_builtin_iterator_zip_keyed_h)
 source = source.replace(/#include "[^"]+"/g, "")
 writeFile(execArgv[2] ?? "turbojs-amalgam.c", source)

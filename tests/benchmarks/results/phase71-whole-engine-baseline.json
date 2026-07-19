@@ -1,0 +1,140 @@
+{
+  "runs": 5,
+  "warmups": 1,
+  "engines": {
+    "TurboJS": {
+      "command": [
+        "build/phase71/turbojs"
+      ],
+      "version": "0.15.1",
+      "binary_bytes": 1611768,
+      "startup_median_ms": 7.045568,
+      "startup_rss_kb": 5880
+    },
+    "Node/V8": {
+      "command": [
+        "node"
+      ],
+      "version": "v22.16.0",
+      "binary_bytes": null,
+      "startup_median_ms": 38.329356,
+      "startup_rss_kb": 118600
+    }
+  },
+  "workloads": {
+    "int_loop.js": {
+      "TurboJS": {
+        "median_ms": 585.682745,
+        "mean_ms": 596.7007828,
+        "min_ms": 583.683811,
+        "max_ms": 643.060025,
+        "rss_kb": 4812,
+        "output": "-2014260032"
+      },
+      "Node/V8": {
+        "median_ms": 47.975955,
+        "mean_ms": 49.27973,
+        "min_ms": 46.216827,
+        "max_ms": 54.941773,
+        "rss_kb": 125144,
+        "output": "-2014260032"
+      },
+      "v8_speedup": 12.207839218625246
+    },
+    "float_loop.js": {
+      "TurboJS": {
+        "median_ms": 220.54252,
+        "mean_ms": 221.0671568,
+        "min_ms": 215.157019,
+        "max_ms": 225.189024,
+        "rss_kb": 6404,
+        "output": "true"
+      },
+      "Node/V8": {
+        "median_ms": 96.719263,
+        "mean_ms": 96.563992,
+        "min_ms": 92.946266,
+        "max_ms": 98.990712,
+        "rss_kb": 127692,
+        "output": "true"
+      },
+      "v8_speedup": 2.280233669687909
+    },
+    "function_calls.js": {
+      "TurboJS": {
+        "median_ms": 603.762345,
+        "mean_ms": 602.5606792,
+        "min_ms": 593.954527,
+        "max_ms": 608.365444,
+        "rss_kb": 5532,
+        "output": "37499987500000"
+      },
+      "Node/V8": {
+        "median_ms": 58.526825,
+        "mean_ms": 59.4987112,
+        "min_ms": 57.228089,
+        "max_ms": 62.415728,
+        "rss_kb": 119880,
+        "output": "37499987500000"
+      },
+      "v8_speedup": 10.315993478204225
+    },
+    "object_props.js": {
+      "TurboJS": {
+        "median_ms": 388.641863,
+        "mean_ms": 396.7759326,
+        "min_ms": 382.900191,
+        "max_ms": 417.189647,
+        "rss_kb": 5612,
+        "output": "12500022500000"
+      },
+      "Node/V8": {
+        "median_ms": 56.082242,
+        "mean_ms": 56.8610738,
+        "min_ms": 53.246995,
+        "max_ms": 60.071733,
+        "rss_kb": 126732,
+        "output": "12500022500000"
+      },
+      "v8_speedup": 6.9298560317898845
+    },
+    "dense_array.js": {
+      "TurboJS": {
+        "median_ms": 277.462002,
+        "mean_ms": 276.19295700000004,
+        "min_ms": 266.177134,
+        "max_ms": 280.734009,
+        "rss_kb": 22936,
+        "output": "2499997500000"
+      },
+      "Node/V8": {
+        "median_ms": 89.212278,
+        "mean_ms": 91.2615884,
+        "min_ms": 84.157001,
+        "max_ms": 99.094592,
+        "rss_kb": 173956,
+        "output": "2499997500000"
+      },
+      "v8_speedup": 3.1101324640538826
+    },
+    "string_build.js": {
+      "TurboJS": {
+        "median_ms": 24.194381,
+        "mean_ms": 24.109628400000002,
+        "min_ms": 22.499955,
+        "max_ms": 25.433407,
+        "rss_kb": 4628,
+        "output": "100000"
+      },
+      "Node/V8": {
+        "median_ms": 51.93348,
+        "mean_ms": 52.2306206,
+        "min_ms": 51.591436,
+        "max_ms": 53.585003,
+        "rss_kb": 133928,
+        "output": "100000"
+      },
+      "v8_speedup": 0.4658725161495051
+    }
+  }
+}

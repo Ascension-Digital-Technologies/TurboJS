@@ -1,0 +1,41 @@
+{
+  "phase": 77,
+  "note": "Same-machine seven-run matched medians; all outputs matched Node.js during validation.",
+  "workloads": {
+    "int_loop.js": {
+      "TurboJS": {
+        "median_ms": 590.66311,
+        "output": "2499997500000"
+      }
+    },
+    "float_loop.js": {
+      "TurboJS": {
+        "median_ms": 203.862462
+      }
+    },
+    "function_calls.js": {
+      "TurboJS": {
+        "median_ms": 336.500795,
+        "output": "37499987500000"
+      }
+    },
+    "object_props.js": {
+      "TurboJS": {
+        "median_ms": 9.973872,
+        "output": "12500022500000"
+      }
+    },
+    "dense_array.js": {
+      "TurboJS": {
+        "median_ms": 263.17503,
+        "output": "2499997500000"
+      }
+    },
+    "string_build.js": {
+      "TurboJS": {
+        "median_ms": 23.156772,
+        "output": "100000"
+      }
+    }
+  }
+}

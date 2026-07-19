@@ -33,7 +33,7 @@ int main(void)
     TurboJSTieredFunction tiered;
     TurboJSTieredResult route;
     TurboJSIRDiagnostic diagnostic = {0};
-    int key;
+    int key = 0;
     int64_t args[2] = {20, 22};
     int64_t wide[2] = {(int64_t)INT_MAX + 100, 1};
     int64_t result;

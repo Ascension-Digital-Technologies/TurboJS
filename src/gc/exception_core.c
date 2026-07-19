@@ -773,9 +773,9 @@ int JS_IsInstanceOf(JSContext *ctx, JSValueConst val, JSValueConst obj)
     return JS_OrdinaryIsInstanceOf(ctx, val, obj);
 }
 
-#include "src/generated/builtins/array_fromasync.h"
-#include "src/generated/builtins/iterator_zip_keyed.h"
-#include "src/generated/builtins/iterator_zip.h"
+#include "generated/builtins/array_fromasync.h"
+#include "generated/builtins/iterator_zip_keyed.h"
+#include "generated/builtins/iterator_zip.h"
 
 // like Function.prototype.call but monkey patch-proof
 static JSValue js_call_function(JSContext *ctx, JSValueConst this_val,
@@ -859,8 +859,8 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                                      JS_CFUNC_generic_magic, 0),
                 JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
             };
-            return js_bytecode_eval(ctx, qjsc_builtin_array_fromasync,
-                                    sizeof(qjsc_builtin_array_fromasync),
+            return js_bytecode_eval(ctx, turbojsc_builtin_array_fromasync,
+                                    sizeof(turbojsc_builtin_array_fromasync),
                                     countof(argv), argv);
         }
     case JS_BUILTIN_ITERATOR_ZIP:
@@ -876,8 +876,8 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                 JS_NewCFunction(ctx, js_call_function, "call", 2),
                 JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
             };
-            JSValue result = js_bytecode_eval(ctx, qjsc_builtin_iterator_zip,
-                                              sizeof(qjsc_builtin_iterator_zip),
+            JSValue result = js_bytecode_eval(ctx, turbojsc_builtin_iterator_zip,
+                                              sizeof(turbojsc_builtin_iterator_zip),
                                               countof(argv), argv);
             JS_SetConstructorBit(ctx, result, false);
             return result;
@@ -899,8 +899,8 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                                 "getOwnPropertyKeys", 1),
                 JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
             };
-            JSValue result = js_bytecode_eval(ctx, qjsc_builtin_iterator_zip_keyed,
-                                              sizeof(qjsc_builtin_iterator_zip_keyed),
+            JSValue result = js_bytecode_eval(ctx, turbojsc_builtin_iterator_zip_keyed,
+                                              sizeof(turbojsc_builtin_iterator_zip_keyed),
                                               countof(argv), argv);
             JS_SetConstructorBit(ctx, result, false);
             return result;

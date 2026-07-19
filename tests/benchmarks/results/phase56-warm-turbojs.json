@@ -1,0 +1,30 @@
+{
+  "engine": "build/p56-full/turbojs",
+  "source": "tests/benchmarks/js/warm_int_loop.js",
+  "iterations": 5,
+  "warmup": 2,
+  "runs": 5,
+  "warm_ms": {
+    "median": 182.0,
+    "min": 181.0,
+    "max": 183.0,
+    "samples": [
+      181.0,
+      182.0,
+      183.0,
+      183.0,
+      181.0
+    ]
+  },
+  "process_ms": {
+    "median": 556.9608530004189,
+    "samples": [
+      556.5628820004349,
+      559.6693019997474,
+      564.4863879988407,
+      556.4143489991693,
+      556.9608530004189
+    ]
+  },
+  "checksum": "2499997500000"
+}

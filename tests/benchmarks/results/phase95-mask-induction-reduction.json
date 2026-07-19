@@ -1,0 +1,22 @@
+{
+  "phase": 95,
+  "workload": "multi_conditional_sustained",
+  "iterations_per_call": 10000000,
+  "warmups": 5,
+  "measured_calls": 15,
+  "turbojs": {
+    "median_ms": 0.00047099997755140066,
+    "min_ms": 0.00044999999227002263,
+    "max_ms": 0.007320999982766807,
+    "result": -999630016
+  },
+  "node": {
+    "version": "22.16.0",
+    "median_ms": 24.53062799999998,
+    "min_ms": 24.456504999999993,
+    "max_ms": 24.73694999999998,
+    "result": -999630016
+  },
+  "optimization": "exact count-and-sum reduction for masked induction predicates",
+  "note": "TurboJS removes the loop rather than executing ten million native iterations."
+}

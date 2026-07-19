@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_PROMISE_BRIDGE_H
-#define QJS_INTERNAL_PROMISE_BRIDGE_H
+#ifndef TURBOJS_INTERNAL_PROMISE_BRIDGE_H
+#define TURBOJS_INTERNAL_PROMISE_BRIDGE_H
 
 /* Private opaque bridge for independently compiled promise hook APIs. */
 #include <turbojs.h>

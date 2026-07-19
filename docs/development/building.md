@@ -1,10 +1,26 @@
 # Building TurboJS
 
-TurboJS requires a C11 compiler, CMake 3.10 or newer, Python 3 for generated engine-unit checks, and a standard platform toolchain.
+## Recommended development build
 
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DTURBOJS_BUILD_TESTS=ON
-cmake --build build --parallel
+```bash
+cmake --preset jit-dev
+cmake --build --preset jit-dev
+ctest --preset jit-dev
 ```
 
-Useful hardening options inherited from the current build are ASan, UBSan, TSan, MSan, warnings-as-errors, shared-library builds, and optional libc integration.
+## Full Release build
+
+```bash
+cmake --preset full-release
+cmake --build --preset full-release
+ctest --preset full-release
+```
+
+The cross-platform Python wrappers provide the same workflow:
+
+```bash
+python scripts/build.py --preset full-release --fresh
+python scripts/test.py --preset full-release --no-build
+```
+
+See the root [README](../../README.md) for the supported toolchains and the [testing guide](testing.md) for validation workflows.

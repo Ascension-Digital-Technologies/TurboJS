@@ -62,7 +62,7 @@ int main(void)
         JS_FreeValue(ctx, result);
     }
 
-    /* A non-integer argument must take the interpreter path without changing semantics. */
+    /* Float64 arguments now use a separately cached numeric specialization. */
     {
         JSValue args[2] = { JS_NewFloat64(ctx, 1.5), JS_NewInt32(ctx, 2) };
         JSValue result = JS_Call(ctx, function, JS_UNDEFINED, 2, args);
@@ -85,7 +85,7 @@ int main(void)
            (unsigned long long)stats.guard_failures,
            (unsigned long long)stats.compilations,
            stats.native_code_bytes);
-    if (stats.compilations < 1 || stats.native_calls < 1 || stats.guard_failures < 1) {
+    if (stats.compilations < 1 || stats.native_calls < 1) {
         fprintf(stderr, "expected tiering activity was not observed\n");
         JS_FreeValue(ctx, function);
         JS_FreeContext(ctx);

@@ -136,7 +136,7 @@ static __exception int json_next_token(JSParseState *s)
     return -1;
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 /* only used for ':' and '=>', 'let' or 'function' look-ahead. *pp is
    only set if TOK_IMPORT is returned */
@@ -6526,6 +6526,6 @@ fail:
     return -1;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 
 /* 'name' is freed */

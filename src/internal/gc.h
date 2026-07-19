@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_GC_H
-#define QJS_INTERNAL_GC_H
+#ifndef TURBOJS_INTERNAL_GC_H
+#define TURBOJS_INTERNAL_GC_H
 
 /*
  * Ownership boundary: gc subsystem.

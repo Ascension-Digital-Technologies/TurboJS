@@ -1,0 +1,19 @@
+{
+  "phase": 47,
+  "workload": "dense_array_osr.js",
+  "runs": 9,
+  "warmups": 2,
+  "TurboJS": {
+    "median_ms": 127.934214,
+    "min_ms": 126.869944,
+    "max_ms": 130.624952
+  },
+  "Node/V8": {
+    "median_ms": 120.077413,
+    "min_ms": 115.915829,
+    "max_ms": 125.000908
+  },
+  "phase46_baseline_ms": 133.85,
+  "phase47_improvement_percent": 4.42,
+  "remaining_v8_gap_percent": 6.54
+}

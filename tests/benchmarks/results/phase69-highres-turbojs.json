@@ -1,0 +1,8 @@
+{
+  "engine": "TurboJS",
+  "clock": "monotonic_ns",
+  "runs": 15, "warmups": 3, "repetitions": 5,
+  "median_ns": 4304999, "min_ns": 4132804, "max_ns": 9486230,
+  "checksum": 2499997500000,
+  "jit": {"region_compilations": 0, "region_native_calls": 15, "region_compile_failures": 0, "native_code_bytes": 0}
+}

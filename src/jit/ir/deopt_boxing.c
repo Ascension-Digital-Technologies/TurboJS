@@ -27,6 +27,10 @@ static TurboJSBoxedValue box_value(int64_t value, TurboJSValueKind kind,
         boxed.tag = TURBOJS_BOXED_FLOAT64;
         memcpy(&boxed.as.number, &value, sizeof(value));
         break;
+    case TURBOJS_VALUE_CALLABLE_REFERENCE:
+        boxed.tag = TURBOJS_BOXED_CALLABLE_REFERENCE;
+        boxed.as.callable = (const TurboJSCallableReference *)(uintptr_t)(uint64_t)value;
+        break;
     case TURBOJS_VALUE_HEAP_REFERENCE:
         boxed.tag = TURBOJS_BOXED_HEAP_REFERENCE;
         boxed.as.reference = (void *)(uintptr_t)(uint64_t)value;

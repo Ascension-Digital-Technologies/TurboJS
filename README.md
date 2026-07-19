@@ -1,306 +1,303 @@
 # TurboJS
 
-**TurboJS is a lightweight embeddable JavaScript engine with an interpreter, x86-64 baseline JIT, feedback-driven optimizing JIT, and portable AOT modules.**
+**A compact, embeddable JavaScript engine built to pursue V8-class sustained performance with dramatically lower startup cost, memory usage, binary size, and integration overhead.**
 
-TurboJS is designed for applications that need fast startup, controlled memory use, native embedding, and an execution pipeline that remains understandable. The project keeps cold code in the interpreter, promotes hot functions to a compact baseline compiler, and only invokes the optimizing tier when runtime feedback is stable.
+TurboJS is designed for applications that need serious JavaScript execution without carrying the weight of a browser-scale runtime. Its goal is ambitious and direct: deliver performance that can move increasingly close to V8 on long-running workloads while remaining much smaller, faster to initialize, easier to embed, and more economical in memory.
 
-> **97%+ targeted core JavaScript coverage:** TurboJS passed **5,833 of 5,988 non-skipped executions (97.41%)** in the published 6,000-test Test262 core baseline. In the complete single-variant run, the JavaScript `language/` category passed **96.02%**. Intl, Temporal, and unsupported host hooks are reported separately so the scope remains explicit.
+Rather than paying the full cost of an optimizing compiler at startup, TurboJS begins with a lean interpreter and progressively invests in hotter code. Baseline compilation, runtime feedback, inline caching, on-stack replacement, speculative optimization, deoptimization, native code caching, and AOT support work together as one execution pipeline.
 
-> **Project status:** v1 engineering release. The numeric and runtime-helper JIT/AOT pipeline is implemented and tested. Unsupported optimized shapes safely remain in the baseline tier or interpreter. See [docs/status/release-status.md](docs/status/release-status.md) for exact scope and limitations.
+> **Current release candidate:** `0.16.0-rc.6`  
+> **Validation:** 293 full-release build targets and 97/97 native tests passing  
+> **Platforms:** Windows, Linux, and macOS; x86-64 JIT with ARM64 backend development
 
-## Highlights
+## The goal
 
-- Compact interpreter and bytecode compiler
-- x86-64 baseline JIT with checked arithmetic, branches, loops, locals, and runtime exits
-- Typed SSA optimizing IR with CFGs, dominators, loops, phi nodes, type guards, folding, and DCE
-- Runtime type feedback and automatic interpreter → baseline → optimizing promotion
-- Precise bailout metadata, deoptimization frames, boxed value reconstruction, GC stack maps, and safepoints
-- Runtime-helper dispatch ABI with exceptions and continuation
-- Portable checksummed `TJIR` function images and multi-function `TJM1` AOT modules
-- Cross-platform CMake presets and Python/Bash/PowerShell/Batch developer scripts
-- Focused differential tests and benchmark reporting
+Modern JavaScript engines can achieve extraordinary throughput, but that performance often comes with substantial startup work, memory commitment, binary size, platform complexity, and integration cost. TurboJS is being built around a different balance.
 
-## Execution architecture
+The project aims to combine:
+
+- sustained execution performance that moves toward V8-class territory;
+- significantly lower startup latency;
+- substantially lower memory usage;
+- a much smaller deployable engine;
+- a direct and stable C embedding interface;
+- progressive optimization that spends resources only on code proven to be hot;
+- a clean source tree whose runtime and compiler boundaries remain understandable.
+
+This makes TurboJS especially compelling for native applications, developer tools, game engines, edge software, embedded systems, command-line runtimes, sandboxed execution, and other environments where a full browser runtime is unnecessary or too expensive.
+
+### Current TurboJS vs V8 whole-engine parity snapshot
+
+This comparison is designed to represent **general engine behavior**, not isolated best-case kernels. It excludes fixed-input leaf-call loops, pure recursion microbenchmarks, and analytical workloads that can collapse into unusually specialized native paths.
+
+Both engines execute identical JavaScript with identical externally supplied runtime seeds. The seed changes for every timed sample, preventing the compiler from treating the workload as a fixed result. Every workload is validated by exact checksum equality between TurboJS and Node/V8. The table reports the median of five independent process runs; each process performs two warmups and seven timed samples per workload.
+
+The ratio is **TurboJS time ÷ Node/V8 time**. `1.00x` is parity, and lower is better.
+
+| Whole-engine workload | TurboJS median | Node/V8 median | TurboJS / V8 |
+|---|---:|---:|---:|
+| Numeric simulation | 18.166 ms | 0.595 ms | 30.51x |
+| Order processing | 35.590 ms | 9.930 ms | 3.58x |
+| AST processing pipeline | 8.558 ms | 1.301 ms | 6.58x |
+| Polymorphic event routing | 49.721 ms | 4.728 ms | 10.52x |
+| Graph analytics | 12.975 ms | 1.233 ms | 10.53x |
+| Log parsing and text indexing | 16.199 ms | 4.924 ms | 3.29x |
+| Collection transforms | 30.075 ms | 5.099 ms | 5.90x |
+| Dynamic state machine | 55.276 ms | 1.828 ms | 30.25x |
+| Configuration and template rendering | 120.518 ms | 6.492 ms | 18.56x |
+| Allocation lifecycle | 77.184 ms | 4.988 ms | 15.47x |
+| **Total of workload medians** | **424.264 ms** | **41.117 ms** | **10.32x** |
+| **Geometric-mean ratio** | — | — | **10.30x** |
+| **Median workload ratio** | — | — | **10.52x** |
+
+The most defensible current whole-engine result is therefore approximately **10.3x Node/V8 time by geometric mean** on this host. TurboJS is closest on order processing, text indexing, collection transforms, and AST-style application code. The largest remaining gaps are dynamic numeric loops, branch-heavy state machines, allocation-heavy object lifecycles, and mixed string/object template generation.
+
+This result intentionally does not include the earlier monomorphic-call and fixed-recursion outliers. Those measurements remain useful for validating specific optimization paths, but they are not representative of general whole-engine parity.
+
+The reproducible suite is [`tests/benchmarks/parity/whole_engine_parity.js`](tests/benchmarks/parity/whole_engine_parity.js), the runner is [`scripts/benchmark_parity.py`](scripts/benchmark_parity.py), and the consolidated raw results are retained in [`benchmarks/results/whole-engine-parity.json`](benchmarks/results/whole-engine-parity.json).
+
+Benchmark results are machine- and build-specific and should be reproduced on target hardware before making deployment decisions.
+
+TurboJS does not claim complete V8 parity today. It is an active engine focused on closing the sustained-performance gap while preserving the compactness and responsiveness that motivated the project from the beginning.
+
+## Why TurboJS
+
+TurboJS is not a thin command wrapper and it is not only a bytecode interpreter. It contains the machinery expected from a modern high-performance JavaScript engine:
+
+- a JavaScript parser, compiler, bytecode format, and interpreter;
+- a fast baseline compilation tier;
+- a feedback-directed SSA optimizing compiler;
+- runtime inline caches and generation-checked compiled call entries;
+- on-stack replacement for hot loops;
+- precise deoptimization back into safe lower-tier execution;
+- native code caching, invalidation, and dependency tracking;
+- portable ahead-of-time module support;
+- a stable C API for embedding the engine into native applications.
+
+The engine is deliberately structured as a professional systems project rather than a monolithic source drop. Public headers, runtime internals, compiler tiers, machine-code backends, tests, tools, generated assets, and platform support each have explicit ownership boundaries.
+
+## Execution pipeline
+
+TurboJS uses a staged execution pipeline that keeps cold code inexpensive while allowing hot code to become progressively more specialized.
+
+| Component | Purpose |
+|---|---|
+| **Rotor** | Parses JavaScript and emits validated TurboJS bytecode. |
+| **Pulse** | Executes cold code and preserves canonical language semantics. |
+| **Spool** | Quickly compiles hot bytecode with Pulse-compatible frame state. |
+| **Telemetry** | Records value kinds, call targets, object shapes, and execution behavior. |
+| **Relay** | Hosts property, element, and call-site inline caches. |
+| **Clutch** | Connects guarded call sites to generation-checked native entries. |
+| **Redline** | Builds specialized SSA and optimized native regions. |
+| **Slipstream** | Transfers active execution into optimized code through OSR. |
+| **Rewind** | Reconstructs lower-tier state when speculation fails. |
+| **Gearbox** | Lowers IR, allocates registers, and emits machine code. |
+| **Vault** | Owns executable memory, native entries, aging, and invalidation. |
+| **Forge** | Produces portable or native AOT modules. |
 
 ```text
 JavaScript source
       │
       ▼
-Parser and bytecode compiler
+    Rotor ───────────────────────────────────────────► Forge
       │
       ▼
-TurboJS bytecode ───────────────► Portable AOT module (.tjm)
-      │                                  │
-      ▼                                  ▼
-Interpreter ── hot ──► Baseline JIT ── stable feedback ──► Optimizing JIT
-      ▲                     │                                  │
-      └──── fallback ◄──────┴──────── deoptimization ◄─────────┘
+    Pulse ── hot ──► Spool ── stable feedback ──► Redline
+      ▲                 │              │               │
+      │                 └── Relay + Clutch ────────────┤
+      │                                                │
+      └──────── Rewind ◄────── Slipstream ─────────────┘
+
+                Gearbox emits native code into Vault
 ```
 
-The engine fails closed: unsupported bytecode, unstable types, failed guards, arithmetic edge cases, and dynamic JavaScript operations return to a safe runtime path instead of being guessed or miscompiled.
+The result is an engine that can start with a small runtime footprint, avoid unnecessary compilation work, and concentrate its most expensive optimizations on the code paths that matter most.
 
-## Repository layout
+## Shared graph regions
 
-```text
-apps/                 CLI application sources
-runtime/              Optional runtime and libc integration
-src/
-  api/                Public C API and API implementation
-  internal/           Private engine contracts
-  compiler/           Lexer, parser, and bytecode compilation
-  vm/                 Interpreter and VM call machinery
-  runtime/            Runtime state, atoms, strings, and classes
-  objects/            Object representation and shapes
-  gc/                 Allocation, tracing, and collection
-  builtins/            JavaScript built-ins
-  modules/             Module parsing, linking, and evaluation
-  serialization/       Bytecode serialization
-  numeric/             Numeric helpers
-  regexp/              Regular-expression engine
-  unicode/             Unicode tables and algorithms
-  jit/                 Baseline JIT, SSA optimizer, AOT, deopt, and cache
-  generated/           Reproducible generated engine sources
-tests/                 Unit, differential, VM, JIT, and AOT tests
-tools/                 Generators, validation, amalgamation, and AOT tools
-scripts/               Cross-platform developer workflow
+The current engine introduces shared application-region graphs for larger real-world execution patterns. Redline can reason across grouped accumulator loops, callback routing, record processing, AST-style visitors, and coupled Float64 workloads instead of treating each hot operation as an isolated fragment.
 
-docs/architecture/     Design documentation
-docs/development/      Build, test, and contribution guidance
-docs/specifications/   Versioned artifact formats and contracts
-```
+The shared-region runtime also includes:
 
-## Prerequisites
+- polymorphic Clutch publication for observed call targets;
+- dense-array fast paths integrated with OSR;
+- shared graph ownership and region reuse;
+- native continuation and dependency tracking;
+- runtime-safe AVX2/FMA dispatch on supported x86-64 processors;
+- cross-platform monotonic timing and aligned memory support.
 
-- CMake 3.20 or newer
-- Ninja recommended
-- C11-capable compiler
-  - Clang or GCC on Linux/macOS
-  - Clang, clang-cl, or MSVC-compatible toolchain on Windows
-- Python 3.9 or newer for repository scripts and generators
+These capabilities move TurboJS beyond isolated micro-optimizations and toward sustained optimization of larger application-level regions.
 
-The x86-64 native backend currently supports Windows x64 and System V x86-64 hosts. Other hosts retain interpreter and portable AOT functionality where supported by the base engine.
+## Build
 
-## Quick start
+### Windows
 
-### Focused JIT development build
+Requirements:
 
-```bash
-python scripts/build.py --preset jit-dev --fresh
-python scripts/test.py --preset jit-dev
-```
+- CMake
+- Ninja
+- Python 3
+- LLVM/Clang
 
-Equivalent CMake commands:
-
-```bash
-cmake --preset jit-dev
-cmake --build --preset jit-dev
-ctest --preset jit-dev
-```
-
-### Full release build
-
-```bash
-python scripts/build.py --preset full-release --fresh
-python scripts/test.py --preset full-release
-```
-
-### Windows PowerShell
+The included PowerShell launcher discovers both `clang.exe` and `llvm-rc.exe` automatically:
 
 ```powershell
-.\scripts\run.ps1 build --preset jit-dev --fresh
-.\scripts\run.ps1 test --preset jit-dev
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build-windows.ps1 -Preset full-release -Jobs 8
 ```
 
-### Windows Command Prompt
+Run the engine:
 
-```bat
-scripts\run.bat build --preset jit-dev --fresh
-scripts\run.bat test --preset jit-dev
+```powershell
+.\build\full-release\turbojs.exe --version
+.\build\full-release\turbojs.exe -e "console.log('TurboJS:', 6 * 7)"
 ```
 
-## Test262 conformance suite
-
-Test262 is **not vendored** in source archives. Fetch or update it from the official TC39 repository when needed:
+### Linux and macOS
 
 ```bash
-python scripts/fetch_test262.py
+python3 scripts/build.py --preset full-release --fresh --jobs 8
+./build/full-release/turbojs --version
+./build/full-release/turbojs -e "console.log('TurboJS:', 6 * 7)"
 ```
 
-Then configure and run either profile:
+### Direct CMake workflow
 
 ```bash
-cmake -S . -B build/test262 -DTURBOJS_BUILD_TEST262_RUNNER=ON
-cmake --build build/test262 --target run-test262-core
-cmake --build build/test262 --target run-test262
+cmake --preset full-release
+cmake --build --preset full-release --parallel 8
+ctest --preset full-release
 ```
 
-The fetched checkout lives at `third_party/test262/` and is ignored by Git.
-
-## Developer workflow
-
-```bash
-python scripts/configure.py --preset jit-dev
-python scripts/build.py --preset jit-dev
-python scripts/test.py --preset jit-dev
-python scripts/benchmark.py --preset jit-dev --runs 20
-python scripts/validate.py --preset jit-dev
-python scripts/sanitize.py --kind address-undefined
-python scripts/package.py --name turbojs-source
-python scripts/clean.py --preset jit-dev
-```
-
-See [scripts/README.md](scripts/README.md) for every command, output location, and platform-specific note.
-
-## Embedding overview
-
-Public headers live in `src/api/`. A minimal host creates a runtime and context, evaluates source, handles exceptions, and destroys resources in reverse order. New embedding code should use TurboJS-owned API names and must not include private headers from `src/internal/`.
+## Embed TurboJS
 
 ```c
-#include "turbojs.h"
+#include <stdio.h>
+#include <string.h>
+#include <turbojs/turbojs.h>
 
-int main(void) {
+int main(void)
+{
     JSRuntime *runtime = JS_NewRuntime();
-    if (!runtime) return 1;
+    JSContext *context = runtime ? JS_NewContext(runtime) : NULL;
+    const char source[] = "21 * 2";
+    JSValue value;
+    int32_t result = 0;
 
-    JSContext *context = JS_NewContext(runtime);
-    if (!context) {
+    if (!context)
+        return 1;
+
+    value = JS_Eval(context, source, strlen(source), "embed.js",
+                    JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(value) || JS_ToInt32(context, &result, value)) {
+        JS_FreeValue(context, value);
+        JS_FreeContext(context);
         JS_FreeRuntime(runtime);
         return 1;
     }
 
-    const char source[] = "40 + 2";
-    JSValue result = JS_Eval(
-        context,
-        source,
-        sizeof(source) - 1,
-        "example.js",
-        JS_EVAL_TYPE_GLOBAL
-    );
-
-    if (JS_IsException(result)) {
-        JSValue exception = JS_GetException(context);
-        JS_FreeValue(context, exception);
-    }
-
-    JS_FreeValue(context, result);
+    printf("%d\n", result);
+    JS_FreeValue(context, value);
     JS_FreeContext(context);
     JS_FreeRuntime(runtime);
     return 0;
 }
 ```
 
-See `examples/` and the architecture documents for JIT-specific APIs, runtime-helper registration, AOT loading, and tier statistics.
+See [`docs/embedding/README.md`](docs/embedding/README.md) for ownership rules, error handling, runtime configuration, and integration examples.
 
-## JIT tiers
+## Testing
 
-### Interpreter
-
-The interpreter remains the semantic source of truth and handles all supported JavaScript behavior. It is used for cold functions, unsupported JIT instructions, unstable feedback, exceptions, and deoptimization fallback.
-
-### Baseline JIT
-
-The baseline compiler prioritizes low compile latency and predictable native code. Its verified IR supports arguments, constants, locals, arithmetic, comparisons, branches, loops, checked division/remainder, runtime-helper exits, and returns. Stack-backed virtual registers keep the backend compact.
-
-### Optimizing JIT
-
-The optimizing tier is entered only after feedback policy approval. It uses typed SSA values, explicit basic blocks, CFG edges, dominators, loop metadata, phi nodes, specialization guards, constant folding, branch folding, and dead-value elimination. Unsupported graphs stay on the baseline tier.
-
-### Deoptimization and GC cooperation
-
-Compiled code publishes precise bytecode positions, live-value masks, stack maps, and safepoints. Checked arithmetic, guard failures, runtime requests, and helper calls can capture a frame, root or relocate heap references, execute a slow path, and resume without replaying the function prefix where supported.
-
-## AOT artifacts
-
-TurboJS defines two portable formats:
-
-- **TJIR** — a versioned, checksummed serialized IR function
-- **TJM1** — a checksummed multi-function module with named exports and embedded TJIR images
-
-Inspect a module with:
+Run the complete native suite:
 
 ```bash
-turbojs-aot-inspect application.tjm
+python3 scripts/test.py --preset full-release --no-build
 ```
 
-The loader validates magic, version, declared sizes, function-table bounds, embedded images, and checksums before exposing executable content. See [docs/specifications/tjm-module-format.md](docs/specifications/tjm-module-format.md).
-
-## Tests
-
-The focused suite covers IR verification, interpreter/native differential execution, register pressure, bytecode translation, locals, branches, loops, checked numeric behavior, code caching, deoptimization, GC maps, runtime safepoints, helper dispatch, type feedback, SSA optimization, CFG analysis, automatic promotion, and AOT modules.
+Or directly:
 
 ```bash
-python scripts/test.py --preset jit-dev
+ctest --test-dir build/full-release --output-on-failure
 ```
 
-Run one group:
+The current source passes all **97 native tests**, covering the parser/runtime boundary, JIT IR, SSA optimization, OSR, deoptimization, inline caches, compiled calls, Float64 lowering, SIMD kernels, application regions, embedding, lifecycle stress, and native-code ownership.
+
+### Test262
+
+Fetch the official suite:
 
 ```bash
-python scripts/test.py --preset jit-dev --filter turbojs.jit
+python3 scripts/fetch_test262.py
 ```
 
-Every optimization should add a differential test that compares the interpreter, baseline JIT, optimizing tier, and AOT-loaded execution whenever those routes support the operation.
-
-## Benchmarks
+Run the full profile:
 
 ```bash
-python scripts/benchmark.py --preset jit-dev --runs 20
+python3 scripts/test262.py \
+  --engine build/full-release/turbojs \
+  --suite third_party/test262 \
+  --profile full \
+  --workers 8 \
+  --timeout 5 \
+  --resume \
+  --allow-failures \
+  --report build/test262-full-report.json
 ```
 
-The runner reports warmups, raw samples, median, mean, minimum, and maximum process times, and writes machine-readable JSON. Benchmarks must distinguish process-level timing from isolated generated-code throughput and must not make unsupported comparisons.
+On Windows, use `build\full-release\turbojs.exe` for the engine path.
 
-## Documentation map
+## Repository structure
 
-- [Architecture overview](docs/architecture/overview.md)
-- [JIT/AOT roadmap](docs/architecture/jit-aot-roadmap.md)
-- [Intermediate representation](docs/architecture/intermediate-representation.md)
-- [Optimizing SSA](docs/architecture/optimizing-ssa.md)
-- [Optimizing CFG](docs/architecture/optimizing-cfg.md)
-- [Automatic tiering](docs/architecture/automatic-tiering.md)
-- [Deoptimization frames](docs/architecture/deoptimization-frames.md)
-- [Runtime safepoints](docs/architecture/runtime-safepoints.md)
-- [Runtime helper dispatch](docs/architecture/runtime-helper-dispatch.md)
-- [Building](docs/development/building.md)
-- [Testing](docs/development/testing.md)
-- [TJM module format](docs/specifications/tjm-module-format.md)
+```text
+apps/                 CLI and product entry points
+benchmarks/           Focused engine and JIT benchmarks
+cmake/                Build policy, targets, and source manifests
+docs/                 Durable architecture and contributor documentation
+examples/             Native embedding examples
+generated/            Reproducible generated engine sources
+include/turbojs/      Public embedding SDK
+scripts/              Build, test, benchmark, and packaging workflows
+src/                  Engine implementation
+tests/                Native unit, VM, JIT, and integration tests
+third_party/          Optional external suites and dependencies
+tools/                AOT, generation, validation, and maintenance tools
+```
+
+## Design principles
+
+**Performance without browser-scale weight.** TurboJS is built to pursue high sustained throughput without inheriting the full startup, memory, size, and integration costs of a browser runtime.
+
+**Compact by default.** Cold code should not pay the full cost of an optimizing compiler.
+
+**Optimize from evidence.** Telemetry drives specialization, tiering, and call-target decisions.
+
+**Invest progressively.** Compilation effort increases only after runtime behavior demonstrates that the investment is worthwhile.
+
+**Fail safely.** Speculative code must deoptimize into a valid lower-tier frame rather than corrupt execution.
+
+**Embed cleanly.** The engine exposes a direct C API and does not require a browser, event loop, or application framework.
+
+**Keep architecture visible.** Runtime ownership and compiler boundaries are represented directly in the repository layout.
+
+## Project status
+
+TurboJS is an active release candidate and not yet a drop-in replacement for every V8 or Node.js workload. Its strongest current areas are compact embedding, startup-sensitive applications, native runtime integration, tiered execution, array and numeric specialization, application-region optimization, and controlled long-running workloads.
+
+The long-term direction is clear: continue raising sustained JavaScript performance toward V8-class execution while protecting the properties that make TurboJS distinct—fast startup, low memory use, small binaries, direct embedding, and a clean systems-oriented architecture.
+
+Ongoing work includes broader JavaScript compatibility, wider optimizing-compiler coverage, production ARM64 code generation, more aggressive inlining and escape analysis, expanded GC/JIT stress validation, and reproducible cross-platform release packaging.
+
+See the [`roadmap`](docs/project/ROADMAP.md), [`release status`](docs/project/RELEASE_STATUS.md), and [`architecture overview`](docs/architecture/overview.md).
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes. Important rules:
+Contributions should preserve the engine’s ownership boundaries, test new behavior at the narrowest useful layer, and include benchmark evidence for performance-sensitive changes.
 
-- Preserve interpreter correctness as the source of truth.
-- Unsupported compiler cases must return a defined fallback status.
-- Do not add recursive source globbing to build files.
-- Public API changes require documentation and tests.
-- Generated files must be reproducible from checked-in generators.
-- Performance changes need correctness tests and benchmark evidence.
-
-## Security
-
-Do not report security vulnerabilities in public issues. Follow [SECURITY.md](SECURITY.md) for private reporting guidance and include a minimal reproduction, affected revision, platform, and impact assessment.
-
-## Support and project scope
-
-Use [GitHub Discussions](SUPPORT.md) for usage questions and design conversations; use issues for reproducible defects and scoped feature work. The exact supported v1 surface and deferred work are documented in [docs/status/release-status.md](docs/status/release-status.md).
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Support](SUPPORT.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## License
 
-A project license has not been selected in this repository snapshot. Select and add an OSI-approved `LICENSE` before publishing a public source release. Contributors should not assume redistribution rights until that file exists.
-
-## ECMAScript conformance with Test262
-
-TurboJS does not vendor the large TC39 Test262 checkout. Fetch it on demand, then use the metadata-aware parallel runner:
-
-```bash
-python scripts/fetch_test262.py
-cmake -S . -B build/test262 -DTURBOJS_BUILD_TEST262_RUNNER=ON
-cmake --build build/test262 --target run-test262-core
-```
-
-The runner supports strict/sloppy/module variants, harness includes, negative
-tests, timeouts, filtering, JSON reports, and deterministic sharding. See
-[`tests/test262/README.md`](tests/test262/README.md) and the checked-in
-[`BASELINE_RESULTS.md`](tests/test262/BASELINE_RESULTS.md).
-
-## Documentation
-
-Start with the [documentation index](docs/README.md) for current guides and technical reference.
+See [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md).

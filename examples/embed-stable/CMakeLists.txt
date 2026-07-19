@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(TurboJSStableEmbedConsumer C)
+find_package(TurboJS 0.16 REQUIRED CONFIG)
+add_executable(turbojs-stable-consumer main.c)
+target_link_libraries(turbojs-stable-consumer PRIVATE TurboJS::turbojs)

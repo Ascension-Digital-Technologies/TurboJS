@@ -230,6 +230,7 @@ DEF(       post_inc, 1, 1, 2, none)
 DEF(        dec_loc, 2, 0, 0, loc8)
 DEF(        inc_loc, 2, 0, 0, loc8)
 DEF(        add_loc, 2, 1, 0, loc8)
+DEF(    add_loc_loc, 3, 0, 0, u16) /* destination local, source local */
 DEF(            not, 1, 1, 1, none)
 DEF(           lnot, 1, 1, 1, none)
 DEF(         typeof, 1, 1, 1, none)

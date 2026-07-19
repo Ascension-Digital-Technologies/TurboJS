@@ -1,0 +1,18 @@
+{
+  "workload": "dynamic-bound conditional Int32 loop",
+  "iterations_per_call": 10000000,
+  "warmups": 5,
+  "measured_calls": 15,
+  "expected_result": -1009630016,
+  "turbojs": {
+    "median_ms": 8.291136000305414,
+    "min_ms": 8.14257699996233,
+    "max_ms": 8.975366000086069
+  },
+  "node_22_16_0": {
+    "median_ms": 6.979900999999998,
+    "min_ms": 6.125099999999989,
+    "max_ms": 7.3060020000000065
+  },
+  "turbojs_to_node_ratio": 1.187858680997883
+}

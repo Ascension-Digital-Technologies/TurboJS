@@ -1,0 +1,21 @@
+{
+  "phase": 97,
+  "workload": "dynamic_dense_array_initialization",
+  "elements_per_call": 250000,
+  "warmups": 5,
+  "runs": 15,
+  "TurboJS": {
+    "result": 499999,
+    "median": 0.4053740000817925,
+    "min": 0.40482299984432757,
+    "max": 0.43708199984394014
+  },
+  "Node/V8": {
+    "result": 499999,
+    "median": 6.418743000000006,
+    "min": 5.279382999999996,
+    "max": 11.209270000000004
+  },
+  "ratio": 0.06315473295656052,
+  "checksum_match": true
+}

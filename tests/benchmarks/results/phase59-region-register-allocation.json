@@ -1,0 +1,26 @@
+{
+  "benchmark": "general multi-block SSA counted loop",
+  "iterations_per_invocation": 1000000,
+  "measured_invocations": 100,
+  "phase58": {
+    "median_ms": 248.504,
+    "nanoseconds_per_iteration": 2.485,
+    "native_code_bytes": 323,
+    "storage_model": "one stack slot per SSA value"
+  },
+  "phase59": {
+    "median_ms": 137.771,
+    "nanoseconds_per_iteration": 1.378,
+    "native_code_bytes": 252,
+    "frame_bytes": 32,
+    "register_resident_values": 12,
+    "allocator_spills": 2,
+    "storage_model": "linear-scan GPR assignments with spill-only stack storage"
+  },
+  "improvement": {
+    "speedup": 1.803,
+    "runtime_reduction_percent": 44.58,
+    "code_size_reduction_percent": 21.98
+  },
+  "notes": "Median of five full benchmark executions on the same x86-64 host. This measures the standalone general region backend, not JavaScript CLI warm throughput."
+}

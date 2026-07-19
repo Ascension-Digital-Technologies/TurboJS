@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_PLATFORM_H
-#define QJS_INTERNAL_PLATFORM_H
+#ifndef TURBOJS_INTERNAL_PLATFORM_H
+#define TURBOJS_INTERNAL_PLATFORM_H
 
 /*
  * Platform, compiler, and build-policy boundary for the engine.

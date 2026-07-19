@@ -1,0 +1,21 @@
+{
+  "phase": 90,
+  "workload": "dynamic-bound relational branch Int32 loop",
+  "iterations": 10000000,
+  "warmups": 5,
+  "runs": 15,
+  "turbojs": {
+    "result": 1627668640,
+    "median": 8.291078999638557,
+    "min": 7.94573900103569,
+    "max": 10.73947000131011
+  },
+  "node": {
+    "result": 1627668640,
+    "median": 23.486616999999995,
+    "min": 23.26634200000001,
+    "max": 24.620664000000033
+  },
+  "turbojs_to_node_median_ratio": 0.35301290942150415,
+  "checksum_match": true
+}

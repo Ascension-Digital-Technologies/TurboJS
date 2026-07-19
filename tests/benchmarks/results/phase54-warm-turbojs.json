@@ -1,0 +1,30 @@
+{
+  "engine": "build/release54/turbojs",
+  "source": "tests/benchmarks/js/warm_int_loop.js",
+  "iterations": 5,
+  "warmup": 2,
+  "runs": 5,
+  "warm_ms": {
+    "median": 182.0,
+    "min": 182.0,
+    "max": 183.0,
+    "samples": [
+      182.0,
+      182.0,
+      183.0,
+      182.0,
+      182.0
+    ]
+  },
+  "process_ms": {
+    "median": 555.0709440012724,
+    "samples": [
+      556.616314999701,
+      554.7552589996485,
+      561.4379569997254,
+      555.0709440012724,
+      554.9327159988025
+    ]
+  },
+  "checksum": "2499997500000"
+}

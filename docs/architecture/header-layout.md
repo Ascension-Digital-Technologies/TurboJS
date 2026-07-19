@@ -1,9 +1,7 @@
-# Header Layout
+# Header layout
 
-TurboJS keeps headers next to the layer that owns them.
+- `include/turbojs/` contains the supported embedding, runtime, optimization, and JIT API.
+- `src/internal/` contains cross-subsystem private contracts and the private engine data model.
+- Subsystem-local headers remain beside the implementation that owns them.
 
-- `src/api/` contains the supported public embedding, runtime, and JIT API.
-- `src/internal/` contains private contracts shared by engine subsystems.
-- Subsystem-specific headers remain beside their implementations under `src/<subsystem>/`.
-
-Build targets expose only `src/api` publicly. `src` and `src/internal` are private build interfaces. Installation places supported SDK headers under `<prefix>/include/turbojs/`; the source tree has no generic include directory and no compatibility-header layer.
+CMake and Meson expose only `include/turbojs/` to downstream consumers. `src/`, `src/internal/`, generated units, and backend headers are private build interfaces. Installation places the SDK under `<prefix>/include/turbojs/` while preserving the established includes such as `<turbojs.h>` and `<turbojs_embed.h>`.

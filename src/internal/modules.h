@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_MODULES_H
-#define QJS_INTERNAL_MODULES_H
+#ifndef TURBOJS_INTERNAL_MODULES_H
+#define TURBOJS_INTERNAL_MODULES_H
 
 /*
  * Ownership boundary: modules subsystem.

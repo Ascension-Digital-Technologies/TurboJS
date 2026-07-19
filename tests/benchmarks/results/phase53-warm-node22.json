@@ -1,0 +1,30 @@
+{
+  "engine": "/opt/nvm/versions/node/v22.16.0/bin/node",
+  "source": "tests/benchmarks/js/warm_int_loop.js",
+  "iterations": 5,
+  "warmup": 2,
+  "runs": 5,
+  "warm_ms": {
+    "median": 4.0,
+    "min": 4.0,
+    "max": 4.0,
+    "samples": [
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0
+    ]
+  },
+  "process_ms": {
+    "median": 78.54954800131964,
+    "samples": [
+      80.95901900014724,
+      78.54954800131964,
+      77.05012000042188,
+      78.76527599910332,
+      76.2835220011766
+    ]
+  },
+  "checksum": "2499997500000"
+}

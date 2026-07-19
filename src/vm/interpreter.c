@@ -44,6 +44,15 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 
     if (js_poll_interrupts(caller_ctx))
         return JS_EXCEPTION;
+    if (likely(flags & JS_CALL_FLAG_BYTECODE_DIRECT)) {
+        /* The bytecode interpreter has already checked the object tag and
+           class. Keep the canonical call implementation, but avoid repeating
+           generic callable resolution on every hot JavaScript-to-JavaScript
+           edge. */
+        p = JS_VALUE_GET_OBJ(func_obj);
+        b = p->u.func.function_bytecode;
+        goto bytecode_function_ready;
+    }
     if (unlikely(JS_VALUE_GET_TAG(func_obj) != JS_TAG_OBJECT)) {
         if (flags & JS_CALL_FLAG_GENERATOR) {
             JSAsyncFunctionState *s = JS_VALUE_GET_PTR(func_obj);
@@ -83,11 +92,28 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     }
     b = p->u.func.function_bytecode;
 
+bytecode_function_ready:
+    if (rt->jit_optimizing_enabled &&
+        !(flags & (JS_CALL_FLAG_GENERATOR | JS_CALL_FLAG_CONSTRUCTOR))) {
+        JSValue router_result;
+        if (turbojs_try_application_region_call(b, argc, argv, &router_result))
+            return router_result;
+        int router_status = turbojs_try_callback_router_call(p, b, argc, argv,
+                                                              &router_result);
+        if (router_status > 0)
+            return router_result;
+        if (router_status < 0)
+            return JS_EXCEPTION;
+    }
     /* Constructors, generators, closures, non-integer arguments, and unsupported
-       bytecode remain on the canonical interpreter path. */
-    if (!(flags & (JS_CALL_FLAG_GENERATOR | JS_CALL_FLAG_CONSTRUCTOR))) {
+       bytecode remain on the canonical interpreter path. A validated
+       interpreter call edge sets JIT_ATTEMPTED because it already ran Relay,
+       region, and Spool dispatch before entering here. */
+    if (!(flags & (JS_CALL_FLAG_GENERATOR | JS_CALL_FLAG_CONSTRUCTOR |
+                   JS_CALL_FLAG_JIT_ATTEMPTED))) {
         JSValue jit_result;
-        if (turbojs_try_baseline_call(rt, b, argc, argv, &jit_result))
+        if (turbojs_try_region_call(rt, b, argc, argv, &jit_result) ||
+            turbojs_try_baseline_call(rt, b, argc, argv, &jit_result))
             return jit_result;
     }
 
@@ -147,6 +173,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
  restart:
     for(;;) {
         int call_argc;
+        int call_flags;
+        uint32_t call_site_offset = 0;
         JSValue *call_argv;
 
         SWITCH(pc) {
@@ -496,20 +524,59 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         CASE(OP_call1):
         CASE(OP_call2):
         CASE(OP_call3):
+            call_site_offset = (uint32_t)((pc - 1) - b->byte_code_buf);
             call_argc = opcode - OP_call0;
             goto has_call_argc;
         CASE(OP_call):
         CASE(OP_tail_call):
             {
+                call_site_offset = (uint32_t)((pc - 1) - b->byte_code_buf);
                 call_argc = get_u16(pc);
                 pc += 2;
                 goto has_call_argc;
             has_call_argc:
+                call_flags = 0;
                 call_argv = sp - call_argc;
                 sf->cur_pc = pc;
+                ret_val = JS_UNDEFINED;
+                if (likely(JS_VALUE_GET_TAG(call_argv[-1]) == JS_TAG_OBJECT)) {
+                    JSObject *call_obj = JS_VALUE_GET_OBJ(call_argv[-1]);
+                    if (likely(call_obj->class_id == JS_CLASS_BYTECODE_FUNCTION)) {
+                        JSFunctionBytecode *call_bc = call_obj->u.func.function_bytecode;
+                        call_flags = JS_CALL_FLAG_BYTECODE_DIRECT |
+                                     JS_CALL_FLAG_JIT_ATTEMPTED;
+#ifdef TURBOJS_ENABLE_OPTIMIZING_JIT
+                        if (unlikely(turbojs_vm_call_feedback_enabled(rt, b)))
+                            turbojs_vm_call_feedback_observe(rt, b, call_site_offset, call_bc);
+#endif
+                        if (likely(turbojs_relay_try_call(rt, b, call_site_offset,
+                                                         call_bc, call_argc,
+                                                         vc(call_argv), &ret_val)))
+                            goto call_result_ready;
+                        if (turbojs_try_inline_leaf_call(call_bc, call_argc,
+                                                         vc(call_argv), &ret_val)) {
+                            turbojs_relay_install_leaf(rt, b, call_site_offset, call_bc);
+                            goto call_result_ready;
+                        }
+                        if (call_bc->jit_region_native || call_bc->jit_reserved) {
+                            if (unlikely(js_poll_interrupts(ctx)))
+                                goto exception;
+                            if (turbojs_try_region_call(rt, call_bc, call_argc,
+                                                        vc(call_argv), &ret_val))
+                                goto call_result_ready;
+                            if (turbojs_try_baseline_call(rt, call_bc, call_argc,
+                                                         vc(call_argv), &ret_val)) {
+                                turbojs_relay_install_spool(rt, b,
+                                    call_site_offset, call_bc);
+                                goto call_result_ready;
+                            }
+                        }
+                    }
+                }
                 ret_val = JS_CallInternal(ctx, call_argv[-1], JS_UNDEFINED,
                                           JS_UNDEFINED, call_argc,
-                                          vc(call_argv), 0);
+                                          vc(call_argv), call_flags);
+            call_result_ready:
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
                 if (opcode == OP_tail_call)
@@ -540,13 +607,51 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         CASE(OP_call_method):
         CASE(OP_tail_call_method):
             {
+                call_flags = 0;
+                call_site_offset = (uint32_t)((pc - 1) - b->byte_code_buf);
                 call_argc = get_u16(pc);
                 pc += 2;
                 call_argv = sp - call_argc;
                 sf->cur_pc = pc;
+                ret_val = JS_UNDEFINED;
+                if (likely(JS_VALUE_GET_TAG(call_argv[-1]) == JS_TAG_OBJECT)) {
+                    JSObject *call_obj = JS_VALUE_GET_OBJ(call_argv[-1]);
+                    if (likely(call_obj->class_id == JS_CLASS_BYTECODE_FUNCTION)) {
+                        JSFunctionBytecode *call_bc = call_obj->u.func.function_bytecode;
+                        call_flags = JS_CALL_FLAG_BYTECODE_DIRECT |
+                                     JS_CALL_FLAG_JIT_ATTEMPTED;
+#ifdef TURBOJS_ENABLE_OPTIMIZING_JIT
+                        if (unlikely(turbojs_vm_call_feedback_enabled(rt, b)))
+                            turbojs_vm_call_feedback_observe(rt, b, call_site_offset, call_bc);
+#endif
+                        if (likely(turbojs_relay_try_call(rt, b, call_site_offset,
+                                                         call_bc, call_argc,
+                                                         vc(call_argv), &ret_val)))
+                            goto call_method_result_ready;
+                        if (turbojs_try_inline_leaf_call(call_bc, call_argc,
+                                                         vc(call_argv), &ret_val)) {
+                            turbojs_relay_install_leaf(rt, b, call_site_offset, call_bc);
+                            goto call_method_result_ready;
+                        }
+                        if (call_bc->jit_region_native || call_bc->jit_reserved) {
+                            if (unlikely(js_poll_interrupts(ctx)))
+                                goto exception;
+                            if (turbojs_try_region_call(rt, call_bc, call_argc,
+                                                        vc(call_argv), &ret_val))
+                                goto call_method_result_ready;
+                            if (turbojs_try_baseline_call(rt, call_bc, call_argc,
+                                                         vc(call_argv), &ret_val)) {
+                                turbojs_relay_install_spool(rt, b,
+                                    call_site_offset, call_bc);
+                                goto call_method_result_ready;
+                            }
+                        }
+                    }
+                }
                 ret_val = JS_CallInternal(ctx, call_argv[-1], call_argv[-2],
                                           JS_UNDEFINED, call_argc,
-                                          vc(call_argv), 0);
+                                          vc(call_argv), call_flags);
+            call_method_result_ready:
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
                 if (opcode == OP_tail_call_method)
@@ -1125,17 +1230,68 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             BREAK;
 
         CASE(OP_goto):
-            pc += (int32_t)get_u32(pc);
+            {
+                uint8_t *source_pc = pc - 1;
+                uint8_t *target_pc = pc + (int32_t)get_u32(pc);
+                if (unlikely(target_pc < source_pc)) {
+                    uint32_t osr_resume;
+                    if (!turbojs_osr_backedge_is_negative_cached(
+                            rt, b,
+                            (uint32_t)(source_pc - b->byte_code_buf),
+                            (uint32_t)(target_pc - b->byte_code_buf)) &&
+                        turbojs_observe_osr_backedge(rt, b, arg_buf, var_buf, var_refs,
+                                                     stack_buf, sp,
+                                                     (uint32_t)(source_pc - b->byte_code_buf),
+                                                     (uint32_t)(target_pc - b->byte_code_buf),
+                                                     &osr_resume))
+                        target_pc = b->byte_code_buf + osr_resume;
+                }
+                pc = target_pc;
+            }
             if (unlikely(js_poll_interrupts(ctx)))
                 goto exception;
             BREAK;
         CASE(OP_goto16):
-            pc += (int16_t)get_u16(pc);
+            {
+                uint8_t *source_pc = pc - 1;
+                uint8_t *target_pc = pc + (int16_t)get_u16(pc);
+                if (unlikely(target_pc < source_pc)) {
+                    uint32_t osr_resume;
+                    if (!turbojs_osr_backedge_is_negative_cached(
+                            rt, b,
+                            (uint32_t)(source_pc - b->byte_code_buf),
+                            (uint32_t)(target_pc - b->byte_code_buf)) &&
+                        turbojs_observe_osr_backedge(rt, b, arg_buf, var_buf, var_refs,
+                                                     stack_buf, sp,
+                                                     (uint32_t)(source_pc - b->byte_code_buf),
+                                                     (uint32_t)(target_pc - b->byte_code_buf),
+                                                     &osr_resume))
+                        target_pc = b->byte_code_buf + osr_resume;
+                }
+                pc = target_pc;
+            }
             if (unlikely(js_poll_interrupts(ctx)))
                 goto exception;
             BREAK;
         CASE(OP_goto8):
-            pc += (int8_t)pc[0];
+            {
+                uint8_t *source_pc = pc - 1;
+                uint8_t *target_pc = pc + (int8_t)pc[0];
+                if (unlikely(target_pc < source_pc)) {
+                    uint32_t osr_resume;
+                    if (!turbojs_osr_backedge_is_negative_cached(
+                            rt, b,
+                            (uint32_t)(source_pc - b->byte_code_buf),
+                            (uint32_t)(target_pc - b->byte_code_buf)) &&
+                        turbojs_observe_osr_backedge(rt, b, arg_buf, var_buf, var_refs,
+                                                     stack_buf, sp,
+                                                     (uint32_t)(source_pc - b->byte_code_buf),
+                                                     (uint32_t)(target_pc - b->byte_code_buf),
+                                                     &osr_resume))
+                        target_pc = b->byte_code_buf + osr_resume;
+                }
+                pc = target_pc;
+            }
             if (unlikely(js_poll_interrupts(ctx)))
                 goto exception;
             BREAK;
@@ -1519,29 +1675,33 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             {
                 JSValue val, obj;
                 JSAtom atom;
-                JSObject *p;
+                JSObject *p, *receiver;
                 JSProperty *pr;
                 JSShapeProperty *prs;
+                uint32_t cache_offset = (uint32_t)(pc - b->byte_code_buf - 1);
 
                 atom = get_u32(pc);
                 pc += 4;
 
                 obj = sp[-1];
                 if (likely(JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT)) {
-                    p = JS_VALUE_GET_OBJ(obj);
-                    for(;;) {
+                    receiver = p = JS_VALUE_GET_OBJ(obj);
+                    if (likely(!p->is_exotic) &&
+                        turbojs_vm_property_ic_lookup(rt, b, cache_offset,
+                                                      p, atom, &pr)) {
+                        val = js_dup(pr->u.value);
+                    } else for(;;) {
                         prs = find_own_property(&pr, p, atom);
                         if (prs) {
-                            /* found */
                             if (unlikely(prs->flags & JS_PROP_TMASK))
                                 goto get_field_slow_path;
+                            if (likely(p == receiver && !p->is_exotic))
+                                turbojs_vm_property_ic_fill(rt, b, cache_offset,
+                                                            p, atom, pr);
                             val = js_dup(pr->u.value);
                             break;
                         }
                         if (unlikely(p->is_exotic)) {
-                            /* XXX: should avoid the slow path for arrays
-                               and typed arrays by ensuring that 'prop' is
-                               not numeric */
                             obj = JS_MKPTR(JS_TAG_OBJECT, p);
                             goto get_field_slow_path;
                         }
@@ -1567,29 +1727,33 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             {
                 JSValue val, obj;
                 JSAtom atom;
-                JSObject *p;
+                JSObject *p, *receiver;
                 JSProperty *pr;
                 JSShapeProperty *prs;
+                uint32_t cache_offset = (uint32_t)(pc - b->byte_code_buf - 1);
 
                 atom = get_u32(pc);
                 pc += 4;
 
                 obj = sp[-1];
                 if (likely(JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT)) {
-                    p = JS_VALUE_GET_OBJ(obj);
-                    for(;;) {
+                    receiver = p = JS_VALUE_GET_OBJ(obj);
+                    if (likely(!p->is_exotic) &&
+                        turbojs_vm_property_ic_lookup(rt, b, cache_offset,
+                                                      p, atom, &pr)) {
+                        val = js_dup(pr->u.value);
+                    } else for(;;) {
                         prs = find_own_property(&pr, p, atom);
                         if (prs) {
-                            /* found */
                             if (unlikely(prs->flags & JS_PROP_TMASK))
                                 goto get_field2_slow_path;
+                            if (likely(p == receiver && !p->is_exotic))
+                                turbojs_vm_property_ic_fill(rt, b, cache_offset,
+                                                            p, atom, pr);
                             val = js_dup(pr->u.value);
                             break;
                         }
                         if (unlikely(p->is_exotic)) {
-                            /* XXX: should avoid the slow path for arrays
-                               and typed arrays by ensuring that 'prop' is
-                               not numeric */
                             obj = JS_MKPTR(JS_TAG_OBJECT, p);
                             goto get_field2_slow_path;
                         }
@@ -1618,6 +1782,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSObject *p;
                 JSProperty *pr;
                 JSShapeProperty *prs;
+                uint32_t cache_offset = (uint32_t)(pc - b->byte_code_buf - 1);
 
                 atom = get_u32(pc);
                 pc += 4;
@@ -1625,15 +1790,30 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 obj = sp[-2];
                 if (likely(JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT)) {
                     p = JS_VALUE_GET_OBJ(obj);
-                    prs = find_own_property(&pr, p, atom);
-                    if (!prs)
-                        goto put_field_slow_path;
-                    if (likely((prs->flags & (JS_PROP_TMASK | JS_PROP_WRITABLE |
-                                              JS_PROP_LENGTH)) == JS_PROP_WRITABLE)) {
-                        /* fast path */
-                        set_value(ctx, &pr->u.value, sp[-1]);
+                    if (likely(!p->is_exotic) &&
+                        turbojs_vm_property_ic_lookup_writable(rt, b, cache_offset,
+                                                               p, atom, &pr)) {
+                        if (likely(!JS_VALUE_HAS_REF_COUNT(pr->u.value) &&
+                                   !JS_VALUE_HAS_REF_COUNT(sp[-1])))
+                            pr->u.value = sp[-1];
+                        else
+                            set_value(ctx, &pr->u.value, sp[-1]);
                     } else {
-                        goto put_field_slow_path;
+                        prs = find_own_property(&pr, p, atom);
+                        if (!prs)
+                            goto put_field_slow_path;
+                        if (likely(!p->is_exotic &&
+                            (prs->flags & (JS_PROP_TMASK | JS_PROP_WRITABLE |
+                                           JS_PROP_LENGTH)) == JS_PROP_WRITABLE)) {
+                            turbojs_vm_property_ic_fill(rt, b, cache_offset, p, atom, pr);
+                            if (likely(!JS_VALUE_HAS_REF_COUNT(pr->u.value) &&
+                                       !JS_VALUE_HAS_REF_COUNT(sp[-1])))
+                                pr->u.value = sp[-1];
+                            else
+                                set_value(ctx, &pr->u.value, sp[-1]);
+                        } else {
+                            goto put_field_slow_path;
+                        }
                     }
                     JS_FreeValue(ctx, obj);
                     sp -= 2;
@@ -1837,21 +2017,27 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                            JS_VALUE_GET_TAG(sp[-1]) == JS_TAG_INT)) {
                     JSObject *p = JS_VALUE_GET_OBJ(sp[-2]);
                     uint32_t idx = JS_VALUE_GET_INT(sp[-1]);
-                    if (likely(p->class_id == JS_CLASS_ARRAY &&
-                               idx < p->u.array.count)) {
+                    if (likely(p->class_id == JS_CLASS_ARRAY && p->fast_array &&
+                               idx < p->u.array.count &&
+                               !JS_IsUninitialized(p->u.array.u.values[idx]) &&
+                               p->shape->proto == JS_VALUE_GET_OBJ(ctx->class_proto[JS_CLASS_ARRAY]) &&
+                               ctx->std_array_prototype)) {
                         val = js_dup(p->u.array.u.values[idx]);
+                        rt->dense_array_load_hits++;
                         JS_FreeValue(ctx, sp[-2]);
                         sp[-2] = val;
                         sp--;
                         BREAK;
                     }
                     if (js_get_fast_array_element(ctx, p, idx, &val)) {
+                        rt->dense_array_load_hits++;
                         JS_FreeValue(ctx, sp[-2]);
                         sp[-2] = val;
                         sp--;
                         BREAK;
                     }
                 }
+                rt->dense_array_slow_paths++;
                 sf->cur_pc = pc;
                 val = JS_GetPropertyValue(ctx, sp[-2], sp[-1]);
                 JS_FreeValue(ctx, sp[-2]);
@@ -1871,16 +2057,22 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                            JS_VALUE_GET_TAG(sp[-1]) == JS_TAG_INT)) {
                     JSObject *p = JS_VALUE_GET_OBJ(sp[-2]);
                     uint32_t idx = JS_VALUE_GET_INT(sp[-1]);
-                    if (likely(p->class_id == JS_CLASS_ARRAY &&
-                               idx < p->u.array.count)) {
+                    if (likely(p->class_id == JS_CLASS_ARRAY && p->fast_array &&
+                               idx < p->u.array.count &&
+                               !JS_IsUninitialized(p->u.array.u.values[idx]) &&
+                               p->shape->proto == JS_VALUE_GET_OBJ(ctx->class_proto[JS_CLASS_ARRAY]) &&
+                               ctx->std_array_prototype)) {
+                        rt->dense_array_load_hits++;
                         sp[-1] = js_dup(p->u.array.u.values[idx]);
                         BREAK;
                     }
                     if (js_get_fast_array_element(ctx, p, idx, &val)) {
+                        rt->dense_array_load_hits++;
                         sp[-1] = val;
                         BREAK;
                     }
                 }
+                rt->dense_array_slow_paths++;
                 sf->cur_pc = pc;
                 val = JS_GetPropertyValue(ctx, sp[-2], sp[-1]);
                 sp[-1] = val;
@@ -1942,9 +2134,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     idx = JS_VALUE_GET_INT(sp[-2]);
                     if (likely(JS_VALUE_GET_TAG(sp[-3]) == JS_TAG_OBJECT)) {
                         p = JS_VALUE_GET_OBJ(sp[-3]);
-                        if (likely(p->class_id == JS_CLASS_ARRAY &&
-                                   idx < (uint32_t)p->u.array.count)) {
+                        if (likely(p->class_id == JS_CLASS_ARRAY && p->fast_array &&
+                                   idx < (uint32_t)p->u.array.count &&
+                                   !JS_IsUninitialized(p->u.array.u.values[idx]) &&
+                                   p->shape->proto == JS_VALUE_GET_OBJ(ctx->class_proto[JS_CLASS_ARRAY]) &&
+                                   ctx->std_array_prototype)) {
                             set_value(ctx, &p->u.array.u.values[idx], val);
+                            rt->dense_array_store_hits++;
                             JS_FreeValue(ctx, sp[-3]);
                             sp -= 3;
                             BREAK;
@@ -1963,6 +2159,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                                 if (likely(new_len <= p->u.array.u1.size)) {
                                     p->u.array.u.values[idx] = val;
                                     p->u.array.count = new_len;
+                                    rt->dense_array_store_hits++;
                                     if (new_len > array_len)
                                         p->prop[0].u.value = js_int32(new_len);
                                     JS_FreeValue(ctx, sp[-3]);
@@ -1973,6 +2170,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                         }
                     }
                 }
+                rt->dense_array_slow_paths++;
                 sf->cur_pc = pc;
                 ret = JS_SetPropertyValue(ctx, sp[-3], sp[-2], sp[-1], JS_PROP_THROW_STRICT);
                 JS_FreeValue(ctx, sp[-3]);
@@ -2112,6 +2310,31 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 }
             }
             BREAK;
+        CASE(OP_add_loc_loc):
+            {
+                int dst = pc[0];
+                int src = pc[1];
+                JSValue *pd = &var_buf[dst];
+                JSValue sv = var_buf[src];
+                pc += 2;
+                if (likely(JS_VALUE_IS_BOTH_INT(*pd, sv))) {
+                    int64_t r = (int64_t)JS_VALUE_GET_INT(*pd) + JS_VALUE_GET_INT(sv);
+                    if (likely((int)r == r))
+                        *pd = js_int32((int32_t)r);
+                    else
+                        *pd = __JS_NewFloat64((double)r);
+                } else {
+                    JSValue ops[2];
+                    sf->cur_pc = pc;
+                    ops[0] = js_dup(*pd);
+                    ops[1] = js_dup(sv);
+                    if (js_add_slow(ctx, ops + 2))
+                        goto exception;
+                    set_value(ctx, pd, ops[0]);
+                }
+            }
+            BREAK;
+
         CASE(OP_add_loc):
             {
                 JSValue *pv;
@@ -2441,6 +2664,26 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                         goto exception;
                     set_value(ctx, &var_buf[idx], op1);
                 }
+                if (likely(pc[0] == OP_goto8)) {
+                    uint8_t *source_pc = pc;
+                    uint8_t *target_pc = pc + 1 + (int8_t)pc[1];
+                    if (unlikely(target_pc < source_pc)) {
+                        uint32_t osr_resume;
+                        if (!turbojs_osr_backedge_is_negative_cached(
+                                rt, b,
+                                (uint32_t)(source_pc - b->byte_code_buf),
+                                (uint32_t)(target_pc - b->byte_code_buf)) &&
+                            turbojs_observe_osr_backedge(rt, b, arg_buf, var_buf, var_refs,
+                                                         stack_buf, sp,
+                                                         (uint32_t)(source_pc - b->byte_code_buf),
+                                                         (uint32_t)(target_pc - b->byte_code_buf),
+                                                         &osr_resume))
+                            target_pc = b->byte_code_buf + osr_resume;
+                    }
+                    pc = target_pc;
+                    if (unlikely(js_poll_interrupts(ctx)))
+                        goto exception;
+                }
             }
             BREAK;
         CASE(OP_dec_loc):
@@ -2597,17 +2840,27 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 {                                         \
                 JSValue op1, op2;                         \
                 op1 = sp[-2];                             \
-                op2 = sp[-1];                                   \
+                op2 = sp[-1];                             \
                 if (likely(JS_VALUE_IS_BOTH_INT(op1, op2))) {           \
-                    sp[-2] = js_bool(JS_VALUE_GET_INT(op1) binary_op JS_VALUE_GET_INT(op2)); \
-                    sp--;                                               \
-                } else {                                                \
-                    sf->cur_pc = pc;                                    \
-                    if (slow_call)                                      \
-                        goto exception;                                 \
-                    sp--;                                               \
-                }                                                       \
-                }                                                       \
+                    int cmp_result = JS_VALUE_GET_INT(op1) binary_op JS_VALUE_GET_INT(op2); \
+                    if (likely(pc[0] == OP_if_false8 || pc[0] == OP_if_true8)) { \
+                        int take = pc[0] == OP_if_true8 ? cmp_result : !cmp_result; \
+                        uint8_t *disp_pc = pc + 1;         \
+                        sp -= 2;                           \
+                        pc = take ? disp_pc + (int8_t)disp_pc[0] : pc + 2; \
+                        if (unlikely(js_poll_interrupts(ctx))) \
+                            goto exception;                \
+                    } else {                               \
+                        sp[-2] = js_bool(cmp_result);       \
+                        sp--;                              \
+                    }                                      \
+                } else {                                   \
+                    sf->cur_pc = pc;                        \
+                    if (slow_call)                          \
+                        goto exception;                     \
+                    sp--;                                   \
+                }                                          \
+                }                                          \
             BREAK
 
             OP_CMP(OP_lt, <, js_relational_slow(ctx, sp, opcode));

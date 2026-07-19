@@ -537,3 +537,193 @@ static __maybe_unused void JS_DumpShape(JSRuntime *rt, int i, JSShape *sh)
     printf("\n");
 }
 
+
+/* Four-way polymorphic VM property inline cache for ordinary own data
+   properties. Each bytecode site can retain several stable immutable shapes,
+   avoiding cache thrashing when a call site observes a small object family. */
+static inline TurboJSVMPropertyICEntry *turbojs_vm_property_ic_slot(
+    JSFunctionBytecode *b, uint32_t bytecode_offset)
+{
+    uint32_t h;
+    if (unlikely(!b->property_ic)) {
+        b->property_ic = js_mallocz_rt(b->realm->rt,
+            sizeof(*b->property_ic) * TURBOJS_VM_PROPERTY_IC_SIZE);
+        if (unlikely(!b->property_ic))
+            return NULL;
+    }
+    h = bytecode_offset * 2654435761u;
+    return &b->property_ic[(h >> 28) & (TURBOJS_VM_PROPERTY_IC_SIZE - 1u)];
+}
+
+static inline int turbojs_vm_property_ic_lookup(JSRuntime *rt,
+    JSFunctionBytecode *b, uint32_t bytecode_offset, JSObject *object,
+    JSAtom atom, JSProperty **out_property)
+{
+    TurboJSVMPropertyICEntry *entry;
+    uint32_t i;
+    entry = turbojs_vm_property_ic_slot(b, bytecode_offset);
+    if (unlikely(!entry))
+        return 0;
+    if (unlikely(entry->bytecode_offset != bytecode_offset || entry->atom != atom)) {
+        rt->property_ic_misses++;
+        return 0;
+    }
+    /* Same-object temporal locality is extremely common in hot application
+       loops. The cached object pointer is only a hint: validate the current
+       immutable shape before using the slot index, and always derive the
+       property address from the current object so allocator address reuse
+       cannot leave a stale JSProperty pointer in the cache. */
+    if (likely(entry->last_object == object &&
+               entry->last_shape == object->shape)) {
+        rt->property_ic_hits++;
+        *out_property = &object->prop[entry->last_property_index];
+        return 1;
+    }
+    if (likely(entry->used_ways != 0)) {
+        TurboJSVMPropertyICWay *hot = &entry->ways[entry->hot_way];
+        if (likely(hot->shape == object->shape)) {
+            entry->last_object = object;
+            entry->last_shape = object->shape;
+            entry->last_property_index = hot->property_index;
+            rt->property_ic_hits++;
+            *out_property = &object->prop[hot->property_index];
+            return 1;
+        }
+    }
+    for (i = 0; i < entry->used_ways; ++i) {
+        TurboJSVMPropertyICWay *way = &entry->ways[i];
+        /* Shapes are immutable while retained by the cache. A matching shape
+           therefore guarantees that the property index and descriptor class
+           validated at fill time are still valid. Avoid repeating atom, flag,
+           and bounds checks on every hot property load. */
+        if (likely(way->shape == object->shape)) {
+            entry->hot_way = (uint8_t)i;
+            entry->last_object = object;
+            entry->last_shape = object->shape;
+            entry->last_property_index = way->property_index;
+            rt->property_ic_hits++;
+            *out_property = &object->prop[way->property_index];
+            return 1;
+        }
+    }
+    rt->property_ic_misses++;
+    return 0;
+}
+
+static inline int turbojs_vm_property_ic_lookup_writable(JSRuntime *rt,
+    JSFunctionBytecode *b, uint32_t bytecode_offset, JSObject *object,
+    JSAtom atom, JSProperty **out_property)
+{
+    TurboJSVMPropertyICEntry *entry;
+    uint32_t i;
+    entry = turbojs_vm_property_ic_slot(b, bytecode_offset);
+    if (unlikely(!entry))
+        return 0;
+    if (unlikely(entry->bytecode_offset != bytecode_offset || entry->atom != atom)) {
+        rt->property_ic_misses++;
+        return 0;
+    }
+    /* Same-object temporal locality is extremely common in hot application
+       loops. The cached object pointer is only a hint: validate the current
+       immutable shape before using the slot index, and always derive the
+       property address from the current object so allocator address reuse
+       cannot leave a stale JSProperty pointer in the cache. */
+    if (likely(entry->last_object == object &&
+               entry->last_shape == object->shape)) {
+        rt->property_ic_hits++;
+        *out_property = &object->prop[entry->last_property_index];
+        return 1;
+    }
+    if (likely(entry->used_ways != 0)) {
+        TurboJSVMPropertyICWay *hot = &entry->ways[entry->hot_way];
+        if (likely(hot->shape == object->shape)) {
+            entry->last_object = object;
+            entry->last_shape = object->shape;
+            entry->last_property_index = hot->property_index;
+            rt->property_ic_hits++;
+            *out_property = &object->prop[hot->property_index];
+            return 1;
+        }
+    }
+    for (i = 0; i < entry->used_ways; ++i) {
+        TurboJSVMPropertyICWay *way = &entry->ways[i];
+        /* Writable sites only fill after validating an ordinary writable data
+           descriptor. Descriptor mutations transition the object to another
+           immutable shape, so a shape hit can use the cached slot directly. */
+        if (likely(way->shape == object->shape)) {
+            entry->hot_way = (uint8_t)i;
+            entry->last_object = object;
+            entry->last_shape = object->shape;
+            entry->last_property_index = way->property_index;
+            rt->property_ic_hits++;
+            *out_property = &object->prop[way->property_index];
+            return 1;
+        }
+    }
+    rt->property_ic_misses++;
+    return 0;
+}
+
+static inline void turbojs_vm_property_ic_fill(JSRuntime *rt,
+    JSFunctionBytecode *b, uint32_t bytecode_offset, JSObject *object,
+    JSAtom atom, JSProperty *property)
+{
+    TurboJSVMPropertyICEntry *entry;
+    TurboJSVMPropertyICWay *way;
+    ptrdiff_t property_index;
+    uint32_t i, index;
+    entry = turbojs_vm_property_ic_slot(b, bytecode_offset);
+    if (unlikely(!entry))
+        return;
+    property_index = property - object->prop;
+    if (unlikely(property_index < 0 || property_index >= object->shape->prop_count))
+        return;
+    if (entry->bytecode_offset != bytecode_offset || entry->atom != atom) {
+        for (i = 0; i < entry->used_ways; ++i)
+            if (entry->ways[i].shape)
+                js_free_shape(rt, entry->ways[i].shape);
+        memset(entry, 0, sizeof(*entry));
+        entry->bytecode_offset = bytecode_offset;
+        entry->atom = atom;
+    }
+    for (i = 0; i < entry->used_ways; ++i) {
+        if (entry->ways[i].shape == object->shape) {
+            entry->ways[i].property_index = (uint32_t)property_index;
+            entry->hot_way = (uint8_t)i;
+            entry->last_object = object;
+            entry->last_shape = object->shape;
+            entry->last_property_index = (uint32_t)property_index;
+            rt->property_ic_fills++;
+            return;
+        }
+    }
+    if (entry->used_ways < TURBOJS_VM_PROPERTY_IC_WAYS)
+        index = entry->used_ways++;
+    else {
+        index = entry->replacement_way++ & (TURBOJS_VM_PROPERTY_IC_WAYS - 1u);
+        if (entry->ways[index].shape)
+            js_free_shape(rt, entry->ways[index].shape);
+    }
+    way = &entry->ways[index];
+    way->shape = js_dup_shape(object->shape);
+    way->property_index = (uint32_t)property_index;
+    entry->hot_way = (uint8_t)index;
+    entry->last_object = object;
+    entry->last_shape = object->shape;
+    entry->last_property_index = (uint32_t)property_index;
+    rt->property_ic_fills++;
+}
+
+static void turbojs_vm_property_ic_destroy(JSRuntime *rt,
+                                            JSFunctionBytecode *b)
+{
+    uint32_t i, j;
+    if (!b || !b->property_ic)
+        return;
+    for (i = 0; i < TURBOJS_VM_PROPERTY_IC_SIZE; ++i)
+        for (j = 0; j < b->property_ic[i].used_ways; ++j)
+            if (b->property_ic[i].ways[j].shape)
+                js_free_shape(rt, b->property_ic[i].ways[j].shape);
+    js_free_rt(rt, b->property_ic);
+    b->property_ic = NULL;
+}

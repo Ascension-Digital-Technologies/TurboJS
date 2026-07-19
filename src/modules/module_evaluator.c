@@ -37,7 +37,7 @@ static void free_bytecode_atoms(JSRuntime *rt,
     }
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
 {
@@ -101,7 +101,7 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
     js_free(ctx, fd);
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_*
 static const char *skip_lines(const char *p, int n) {
@@ -587,7 +587,7 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
 }
 #endif
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 static int add_closure_var(JSContext *ctx, JSFunctionDef *s,
                            JSClosureTypeEnum closure_type,
@@ -3380,9 +3380,15 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                     if (cc.line_num >= 0) line_num = cc.line_num;
                     if (cc.col_num >= 0) col_num = cc.col_num;
                     add_pc2line_info(s, bc_out.size, line_num, col_num);
-                    put_short_code(&bc_out, cc.op, cc.idx);
-                    dbuf_putc(&bc_out, OP_add_loc);
-                    dbuf_putc(&bc_out, idx);
+                    if (cc.op == OP_get_loc && idx < 256 && cc.idx < 256) {
+                        dbuf_putc(&bc_out, OP_add_loc_loc);
+                        dbuf_putc(&bc_out, idx);
+                        dbuf_putc(&bc_out, cc.idx);
+                    } else {
+                        put_short_code(&bc_out, cc.op, cc.idx);
+                        dbuf_putc(&bc_out, OP_add_loc);
+                        dbuf_putc(&bc_out, idx);
+                    }
                     pos_next = cc.pos;
                     break;
                 }
@@ -3967,10 +3973,10 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
        are used to compile the eval and they must be ordered by scope,
        so it is necessary to create the closure variables before any
        other variable lookup is done. */
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
     if (fd->has_eval_call)
         add_eval_variables(ctx, fd);
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 
     /* add the module global variables in the closure */
     if (fd->module) {
@@ -4130,5 +4136,5 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     return JS_EXCEPTION;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 

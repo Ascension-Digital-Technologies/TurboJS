@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_MODULE_BRIDGE_H
-#define QJS_INTERNAL_MODULE_BRIDGE_H
+#ifndef TURBOJS_INTERNAL_MODULE_BRIDGE_H
+#define TURBOJS_INTERNAL_MODULE_BRIDGE_H
 
 /*
  * Narrow bridge between the independently compiled module API facade and the

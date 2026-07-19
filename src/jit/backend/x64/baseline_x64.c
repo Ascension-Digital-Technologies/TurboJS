@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,6 +12,7 @@ struct TurboJSNativeFunction {
     uint16_t argument_count;
     uint16_t register_count;
     uint16_t local_count;
+    TurboJSValueKind result_kind;
     uint32_t *bytecode_offsets;
     uint64_t *materialized_masks;
     uint64_t *materialized_local_masks;
@@ -25,6 +27,8 @@ struct TurboJSNativeFunction {
     size_t stack_map_count;
     TurboJSSafepointController owned_safepoint;
     TurboJSSafepointController *safepoint;
+    TurboJSClutchCallSite *owned_clutch_sites;
+    size_t owned_clutch_site_count;
 };
 
 typedef struct CodeBuffer {
@@ -77,6 +81,9 @@ static int mem_rbp_disp32(CodeBuffer*b,unsigned opcode,unsigned reg,int disp);
 static int local_disp(const TurboJSIRFunction *f, uint16_t l);
 static int store_base_disp32(CodeBuffer*b,unsigned base,unsigned reg,uint32_t disp){
     return rex(b,1,reg,0,base)&&emit8(b,0x89)&&emit8(b,0x80u|((reg&7u)<<3u)|(base&7u))&&emit32(b,disp);
+}
+static int load_base_disp32(CodeBuffer*b,unsigned reg,unsigned base,uint32_t disp){
+    return rex(b,1,reg,0,base)&&emit8(b,0x8B)&&emit8(b,0x80u|((reg&7u)<<3u)|(base&7u))&&emit32(b,disp);
 }
 static int return_bailout_at(CodeBuffer*b,const TurboJSIRFunction*f,size_t instruction_index,unsigned status_code){
     uint16_t i;
@@ -138,17 +145,38 @@ static int emit_divrem_checked(CodeBuffer*b,const TurboJSIRFunction*f,size_t ins
 }
 static int slot_disp(uint16_t r){ return -8 * ((int)r + 1); }
 static int local_disp(const TurboJSIRFunction *f, uint16_t l){ return -8 * ((int)f->register_count + (int)l + 1); }
+static int call_arg_disp(const TurboJSIRFunction *f, uint16_t a){ return -8 * ((int)f->register_count + (int)f->local_count + (int)TURBOJS_CLUTCH_MAX_ARGUMENTS - (int)a); }
 static int mem_rbp_disp32(CodeBuffer*b,unsigned opcode,unsigned reg,int disp){
     return rex(b,1,reg,0,5)&&emit8(b,opcode)&&emit8(b,0x80u|((reg&7u)<<3u)|5u)&&emit32(b,(uint32_t)disp);
 }
 static int load_slot(CodeBuffer*b,unsigned reg,uint16_t slot){return mem_rbp_disp32(b,0x8B,reg,slot_disp(slot));}
 static int store_slot(CodeBuffer*b,uint16_t slot,unsigned reg){return mem_rbp_disp32(b,0x89,reg,slot_disp(slot));}
+static int lea_slot(CodeBuffer*b,unsigned reg,uint16_t slot){return mem_rbp_disp32(b,0x8D,reg,slot_disp(slot));}
+static int push_reg(CodeBuffer*b,unsigned reg){if(reg>=8u&&!rex(b,0,0,0,reg))return 0;return emit8(b,0x50u+(reg&7u));}
+static int pop_reg(CodeBuffer*b,unsigned reg){if(reg>=8u&&!rex(b,0,0,0,reg))return 0;return emit8(b,0x58u+(reg&7u));}
+static int call_reg(CodeBuffer*b,unsigned reg){return rex(b,0,0,0,reg)&&emit8(b,0xFF)&&emit8(b,0xD0u|(reg&7u));}
 static int load_arg(CodeBuffer*b,unsigned reg,unsigned arg){
     uint32_t d=arg*8u;
     return rex(b,1,reg,0,11)&&emit8(b,0x8B)&&emit8(b,0x80u|((reg&7u)<<3u)|3u)&&emit32(b,d);
 }
 static int binary_rr(CodeBuffer*b,unsigned opcode,unsigned dst,unsigned src){return rex(b,1,src,0,dst)&&emit8(b,opcode)&&emit8(b,0xC0u|((src&7u)<<3u)|(dst&7u));}
 static int imul_rr(CodeBuffer*b,unsigned dst,unsigned src){return rex(b,1,dst,0,src)&&emit8(b,0x0F)&&emit8(b,0xAF)&&emit8(b,0xC0u|((dst&7u)<<3u)|(src&7u));}
+static int movq_xmm_gpr(CodeBuffer*b,unsigned xmm,unsigned gpr){return emit8(b,0x66)&&rex(b,1,xmm,0,gpr)&&emit8(b,0x0F)&&emit8(b,0x6E)&&emit8(b,0xC0u|((xmm&7u)<<3u)|(gpr&7u));}
+static int movq_gpr_xmm(CodeBuffer*b,unsigned gpr,unsigned xmm){return emit8(b,0x66)&&rex(b,1,xmm,0,gpr)&&emit8(b,0x0F)&&emit8(b,0x7E)&&emit8(b,0xC0u|((xmm&7u)<<3u)|(gpr&7u));}
+static int scalar_f64_rr(CodeBuffer*b,unsigned opcode,unsigned dst,unsigned src){return emit8(b,0xF2)&&emit8(b,0x0F)&&emit8(b,opcode)&&emit8(b,0xC0u|((dst&7u)<<3u)|(src&7u));}
+static int compare_f64_rr(CodeBuffer*b,unsigned predicate,unsigned dst,unsigned src){return emit8(b,0xF2)&&emit8(b,0x0F)&&emit8(b,0xC2)&&emit8(b,0xC0u|((dst&7u)<<3u)|(src&7u))&&emit8(b,predicate);}
+static int cvtsi2sd_xmm_gpr(CodeBuffer*b,unsigned xmm,unsigned gpr){return emit8(b,0xF2)&&rex(b,1,xmm,0,gpr)&&emit8(b,0x0F)&&emit8(b,0x2A)&&emit8(b,0xC0u|((xmm&7u)<<3u)|(gpr&7u));}
+static int cvttsd2si_gpr_xmm(CodeBuffer*b,unsigned gpr,unsigned xmm){return emit8(b,0xF2)&&rex(b,1,gpr,0,xmm)&&emit8(b,0x0F)&&emit8(b,0x2C)&&emit8(b,0xC0u|((gpr&7u)<<3u)|(xmm&7u));}
+static void destroy_clutch_sites(TurboJSClutchCallSite *sites, size_t count)
+{
+    size_t i;
+    if (!sites)
+        return;
+    for (i = 0; i < count; ++i)
+        TurboJS_ClutchCallSiteDestroy(&sites[i]);
+    free(sites);
+}
+
 static TurboJSIRStatus fail(TurboJSIRDiagnostic*d,TurboJSIRStatus s,size_t i,const char*m){if(d){d->status=s;d->instruction_index=i;d->message=m;}return s;}
 
 static uint64_t reg_bit(uint16_t r){ return r < 64u ? ((uint64_t)1u << r) : 0; }
@@ -156,14 +184,19 @@ static uint64_t local_bit(int64_t l){ return l >= 0 && l < 64 ? ((uint64_t)1u <<
 static void instruction_use_def(const TurboJSIRInstruction *in, uint64_t *use_r, uint64_t *def_r, uint64_t *use_l, uint64_t *def_l){
     *use_r=*def_r=*use_l=*def_l=0;
     switch(in->opcode){
-    case TURBOJS_IR_ARGUMENT: case TURBOJS_IR_CONSTANT_I64: *def_r=reg_bit(in->destination); break;
+    case TURBOJS_IR_ARGUMENT: case TURBOJS_IR_CONSTANT_I64: case TURBOJS_IR_CONSTANT_F64: *def_r=reg_bit(in->destination); break;
     case TURBOJS_IR_ADD_I64: case TURBOJS_IR_SUB_I64: case TURBOJS_IR_MUL_I64:
+    case TURBOJS_IR_CALL_NATIVE_I64:
+    case TURBOJS_IR_CALL_NATIVE_F64:
+    case TURBOJS_IR_ADD_F64: case TURBOJS_IR_SUB_F64: case TURBOJS_IR_MUL_F64: case TURBOJS_IR_DIV_F64:
+    case TURBOJS_IR_LESS_THAN_F64: case TURBOJS_IR_LESS_EQUAL_F64: case TURBOJS_IR_EQUAL_F64:
     case TURBOJS_IR_ADD_I32_CHECKED: case TURBOJS_IR_SUB_I32_CHECKED: case TURBOJS_IR_MUL_I32_CHECKED:
     case TURBOJS_IR_DIV_I32_CHECKED: case TURBOJS_IR_REM_I32_CHECKED: case TURBOJS_IR_RUNTIME_HELPER: case TURBOJS_IR_LESS_THAN_I64:
         *use_r=reg_bit(in->left)|reg_bit(in->right); *def_r=reg_bit(in->destination); break;
+    case TURBOJS_IR_I64_TO_F64: case TURBOJS_IR_F64_TO_I64_TRUNC: *use_r=reg_bit(in->left); *def_r=reg_bit(in->destination); break;
     case TURBOJS_IR_LOCAL_GET: *use_l=local_bit(in->immediate); *def_r=reg_bit(in->destination); break;
     case TURBOJS_IR_LOCAL_SET: *use_r=reg_bit(in->left); *def_l=local_bit(in->immediate); break;
-    case TURBOJS_IR_BRANCH_TRUE: case TURBOJS_IR_BRANCH_FALSE: case TURBOJS_IR_RETURN_I64: *use_r=reg_bit(in->left); break;
+    case TURBOJS_IR_BRANCH_TRUE: case TURBOJS_IR_BRANCH_FALSE: case TURBOJS_IR_RETURN_I64: case TURBOJS_IR_RETURN_F64: *use_r=reg_bit(in->left); break;
     default: break;
     }
 }
@@ -189,12 +222,23 @@ TurboJSIRStatus TurboJS_BaselineCompile(const TurboJSIRFunction *f, TurboJSNativ
 #if !defined(__x86_64__) && !defined(_M_X64)
     (void)f;(void)out;return fail(diag,TURBOJS_IR_UNSUPPORTED,0,"x64 baseline backend unavailable");
 #else
-    CodeBuffer b={0}; TurboJSNativeFunction*n=NULL; size_t*i_offsets=NULL; BranchPatch*patches=NULL; size_t pc,patch_count=0; uint32_t frame; TurboJSIRStatus st; uint64_t materialized=0, materialized_locals=0;
+    CodeBuffer b={0}; TurboJSNativeFunction*n=NULL; size_t*i_offsets=NULL; BranchPatch*patches=NULL; TurboJSClutchCallSite *compiled_sites=NULL; size_t pc,patch_count=0,compiled_site_count=0,compiled_site_cursor=0; uint32_t frame; TurboJSIRStatus st; uint64_t materialized=0, materialized_locals=0;
     if (!f || !out)
         return TURBOJS_IR_INVALID_ARGUMENT;
     *out = NULL;
     st=TurboJS_IRVerify(f,diag); if(st!=TURBOJS_IR_OK) return st;
-    frame=(uint32_t)((((size_t)f->register_count + (size_t)f->local_count)*8u+15u)&~15u);
+    for(pc=0;pc<f->instruction_count;pc++)
+        if(f->instructions[pc].opcode==TURBOJS_IR_CALL_NATIVE_I64 || f->instructions[pc].opcode==TURBOJS_IR_CALL_NATIVE_F64)
+            compiled_site_count++;
+    if(compiled_site_count){
+        compiled_sites=(TurboJSClutchCallSite*)calloc(compiled_site_count,sizeof(*compiled_sites));
+        if(!compiled_sites) return TURBOJS_IR_OUT_OF_MEMORY;
+    }
+    {
+        size_t frame_slots=(size_t)f->register_count+(size_t)f->local_count;
+        for(pc=0;pc<f->instruction_count;pc++) if(f->instructions[pc].opcode==TURBOJS_IR_CALL_NATIVE_I64 || f->instructions[pc].opcode==TURBOJS_IR_CALL_NATIVE_F64){frame_slots+=TURBOJS_CLUTCH_MAX_ARGUMENTS;break;}
+        frame=(uint32_t)((frame_slots*8u+15u)&~15u);
+    }
     i_offsets=(size_t*)calloc(f->instruction_count+1,sizeof(*i_offsets)); patches=(BranchPatch*)calloc(f->instruction_count,sizeof(*patches));
     if(!i_offsets||!patches){st=TURBOJS_IR_OUT_OF_MEMORY;goto done;}
     if(!prologue(&b,frame)){st=TURBOJS_IR_OUT_OF_MEMORY;goto done;}
@@ -203,7 +247,8 @@ TurboJSIRStatus TurboJS_BaselineCompile(const TurboJSIRFunction *f, TurboJSNativ
         switch(in->opcode){
         case TURBOJS_IR_NOP: if(!emit8(&b,0x90)) goto oom; break;
         case TURBOJS_IR_ARGUMENT: if(!load_arg(&b,0,(unsigned)in->immediate)||!store_slot(&b,in->destination,0)) goto oom; break;
-        case TURBOJS_IR_CONSTANT_I64: if(!mov_imm64(&b,0,(uint64_t)in->immediate)||!store_slot(&b,in->destination,0)) goto oom; break;
+        case TURBOJS_IR_CONSTANT_I64:
+        case TURBOJS_IR_CONSTANT_F64: if(!mov_imm64(&b,0,(uint64_t)in->immediate)||!store_slot(&b,in->destination,0)) goto oom; break;
         case TURBOJS_IR_ADD_I64: case TURBOJS_IR_SUB_I64: case TURBOJS_IR_MUL_I64:
         case TURBOJS_IR_ADD_I32_CHECKED: case TURBOJS_IR_SUB_I32_CHECKED: case TURBOJS_IR_MUL_I32_CHECKED:
             if(!load_slot(&b,0,in->left)||!load_slot(&b,1,in->right)) goto oom;
@@ -215,12 +260,120 @@ TurboJSIRStatus TurboJS_BaselineCompile(const TurboJSIRFunction *f, TurboJSNativ
             if (!store_slot(&b, in->destination, 0))
                 goto oom;
             break;
+        case TURBOJS_IR_ADD_F64:
+        case TURBOJS_IR_SUB_F64:
+        case TURBOJS_IR_MUL_F64:
+        case TURBOJS_IR_DIV_F64:
+            if(!load_slot(&b,0,in->left)||!load_slot(&b,1,in->right)||
+               !movq_xmm_gpr(&b,0,0)||!movq_xmm_gpr(&b,1,1)) goto oom;
+            if(!scalar_f64_rr(&b,in->opcode==TURBOJS_IR_ADD_F64?0x58:in->opcode==TURBOJS_IR_SUB_F64?0x5C:in->opcode==TURBOJS_IR_MUL_F64?0x59:0x5E,0,1)||
+               !movq_gpr_xmm(&b,0,0)||!store_slot(&b,in->destination,0)) goto oom;
+            break;
+        case TURBOJS_IR_LESS_THAN_F64:
+        case TURBOJS_IR_LESS_EQUAL_F64:
+        case TURBOJS_IR_EQUAL_F64:
+            if(!load_slot(&b,0,in->left)||!load_slot(&b,1,in->right)||
+               !movq_xmm_gpr(&b,0,0)||!movq_xmm_gpr(&b,1,1)||
+               !compare_f64_rr(&b,in->opcode==TURBOJS_IR_EQUAL_F64?0u:in->opcode==TURBOJS_IR_LESS_THAN_F64?1u:2u,0,1)||
+               !movq_gpr_xmm(&b,0,0)||!emit8(&b,0x83)||!emit8(&b,0xE0)||!emit8(&b,0x01)||
+               !store_slot(&b,in->destination,0)) goto oom;
+            break;
+        case TURBOJS_IR_I64_TO_F64:
+            if(!load_slot(&b,0,in->left)||!cvtsi2sd_xmm_gpr(&b,0,0)||!movq_gpr_xmm(&b,0,0)||!store_slot(&b,in->destination,0)) goto oom;
+            break;
+        case TURBOJS_IR_F64_TO_I64_TRUNC:
+            if(!load_slot(&b,0,in->left)||!movq_xmm_gpr(&b,0,0)||!cvttsd2si_gpr_xmm(&b,0,0)||!store_slot(&b,in->destination,0)) goto oom;
+            break;
         case TURBOJS_IR_DIV_I32_CHECKED:
         case TURBOJS_IR_REM_I32_CHECKED:
             if(!load_slot(&b,0,in->left)||!load_slot(&b,1,in->right)||
                !emit_divrem_checked(&b,f,pc,in->opcode==TURBOJS_IR_REM_I32_CHECKED)||
                !store_slot(&b,in->destination,0)) goto oom;
             break;
+        case TURBOJS_IR_CALL_NATIVE_I64:
+        case TURBOJS_IR_CALL_NATIVE_F64: {
+            size_t live_disp, kind_disp, success_disp, after;
+            const TurboJSClutchCallSite *source_site =
+                (const TurboJSClutchCallSite *)(uintptr_t)in->immediate;
+            TurboJSClutchCallSite *call_site;
+            if(!source_site || compiled_site_cursor>=compiled_site_count) goto invalid;
+            call_site=&compiled_sites[compiled_site_cursor++];
+            if (TurboJS_ClutchCallSiteClone(call_site, source_site) !=
+                TURBOJS_IR_OK) goto oom;
+            uint16_t call_index;
+            const uint32_t site_target=(uint32_t)offsetof(TurboJSClutchCallSite,target);
+            const uint32_t site_generation=(uint32_t)offsetof(TurboJSClutchCallSite,expected_generation);
+            const uint32_t site_kind=(uint32_t)offsetof(TurboJSClutchCallSite,expected_kind);
+            const uint32_t handle_function=(uint32_t)offsetof(TurboJSNativeEntryHandle,function);
+            const uint32_t handle_generation=(uint32_t)offsetof(TurboJSNativeEntryHandle,generation);
+            const uint32_t handle_kind=(uint32_t)offsetof(TurboJSNativeEntryHandle,kind);
+            /* Guard the receiver shape before using a property-fused method edge. */
+            if (call_site->flags & TURBOJS_CLUTCH_CALL_HAS_RECEIVER_SHAPE_GUARD) {
+                if (!load_slot(&b,2,call_site->receiver_register) ||
+                    !rex(&b,1,2,0,2) || !emit8(&b,0x85) || !emit8(&b,0xD2) ||
+                    !emit8(&b,0x0F) || !emit8(&b,0x85)) goto oom;
+                live_disp=b.count; if(!emit32(&b,0)||!return_bailout_at(&b,f,pc,5u)) goto oom;
+                after=live_disp+4u; patch32(&b,live_disp,(int32_t)((intptr_t)b.count-(intptr_t)after));
+                if (!load_base_disp32(&b,6,2,call_site->receiver_shape_offset) ||
+                    !mov_imm64(&b,7,call_site->receiver_shape_identity) ||
+                    !binary_rr(&b,0x39,6,7) || !emit8(&b,0x0F) || !emit8(&b,0x84)) goto oom;
+                live_disp=b.count; if(!emit32(&b,0)||!return_bailout_at(&b,f,pc,5u)) goto oom;
+                after=live_disp+4u; patch32(&b,live_disp,(int32_t)((intptr_t)b.count-(intptr_t)after));
+            }
+            /* Guard the Vault publication before touching executable memory. */
+            if(!mov_imm64(&b,0,(uint64_t)(uintptr_t)call_site) ||
+               !load_base_disp32(&b,1,0,site_target) ||
+               !rex(&b,1,1,0,1)||!emit8(&b,0x85)||!emit8(&b,0xC9)||
+               !emit8(&b,0x0F)||!emit8(&b,0x85)) goto oom;
+            live_disp=b.count;if(!emit32(&b,0)||!return_bailout_at(&b,f,pc,5u))goto oom;
+            after=live_disp+4u;patch32(&b,live_disp,(int32_t)((intptr_t)b.count-(intptr_t)after));
+            if(!load_base_disp32(&b,2,0,site_generation) ||
+               !load_base_disp32(&b,6,1,handle_generation) ||
+               !binary_rr(&b,0x39,2,6) || !emit8(&b,0x0F)||!emit8(&b,0x84)) goto oom;
+            live_disp=b.count;if(!emit32(&b,0)||!return_bailout_at(&b,f,pc,5u))goto oom;
+            after=live_disp+4u;patch32(&b,live_disp,(int32_t)((intptr_t)b.count-(intptr_t)after));
+            if(!load_base_disp32(&b,2,0,site_kind) || !emit8(&b,0x0F)||!emit8(&b,0xB6)||!emit8(&b,0xD2) ||
+               !load_base_disp32(&b,6,1,handle_kind) || !emit8(&b,0x40)||!emit8(&b,0x0F)||!emit8(&b,0xB6)||!emit8(&b,0xF6) ||
+               !binary_rr(&b,0x39,2,6) || !emit8(&b,0x0F)||!emit8(&b,0x84)) goto oom;
+            kind_disp=b.count;if(!emit32(&b,0)||!return_bailout_at(&b,f,pc,5u))goto oom;
+            after=kind_disp+4u;patch32(&b,kind_disp,(int32_t)((intptr_t)b.count-(intptr_t)after));
+            if(!load_base_disp32(&b,0,1,handle_function) ||
+               !rex(&b,1,0,0,0)||!emit8(&b,0x85)||!emit8(&b,0xC0)||
+               !emit8(&b,0x0F)||!emit8(&b,0x85)) goto oom;
+            live_disp=b.count;if(!emit32(&b,0)||!return_bailout_at(&b,f,pc,5u))goto oom;
+            after=live_disp+4u;patch32(&b,live_disp,(int32_t)((intptr_t)b.count-(intptr_t)after));
+            if(!call_site || call_site->argument_count > TURBOJS_CLUTCH_MAX_ARGUMENTS)
+                goto invalid;
+            for (call_index = 0; call_index < call_site->argument_count; ++call_index) {
+                if (!load_slot(&b,2,call_site->argument_registers[call_index]) ||
+                    !mem_rbp_disp32(&b,0x89,2,call_arg_disp(f,call_index)))
+                    goto oom;
+            }
+            if(!push_reg(&b,8)||!push_reg(&b,9)||!push_reg(&b,10)||!push_reg(&b,11)) goto oom;
+#if defined(_WIN32)
+            if(!rex(&b,1,0,0,4)||!emit8(&b,0x83)||!emit8(&b,0xEC)||!emit8(&b,0x20) ||
+               !mem_rbp_disp32(&b,0x8D,1,call_arg_disp(f,0)) ||
+               !lea_slot(&b,2,in->destination) ||
+               !load_base_disp32(&b,8,0,(uint32_t)offsetof(TurboJSNativeFunction,deopt_values)) ||
+               !load_base_disp32(&b,9,0,(uint32_t)offsetof(TurboJSNativeFunction,safepoint)) ||
+               !load_base_disp32(&b,0,0,(uint32_t)offsetof(TurboJSNativeFunction,code))) goto oom;
+#else
+            if(!mem_rbp_disp32(&b,0x8D,7,call_arg_disp(f,0)) ||
+               !lea_slot(&b,6,in->destination) ||
+               !load_base_disp32(&b,2,0,(uint32_t)offsetof(TurboJSNativeFunction,deopt_values)) ||
+               !load_base_disp32(&b,1,0,(uint32_t)offsetof(TurboJSNativeFunction,safepoint)) ||
+               !load_base_disp32(&b,0,0,(uint32_t)offsetof(TurboJSNativeFunction,code))) goto oom;
+#endif
+            if(!call_reg(&b,0)) goto oom;
+#if defined(_WIN32)
+            if(!rex(&b,1,0,0,4)||!emit8(&b,0x83)||!emit8(&b,0xC4)||!emit8(&b,0x20)) goto oom;
+#endif
+            if(!pop_reg(&b,11)||!pop_reg(&b,10)||!pop_reg(&b,9)||!pop_reg(&b,8) ||
+               !emit8(&b,0x85)||!emit8(&b,0xC0)||!emit8(&b,0x0F)||!emit8(&b,0x84)) goto oom;
+            success_disp=b.count;if(!emit32(&b,0)||!return_bailout_at(&b,f,pc,5u))goto oom;
+            after=success_disp+4u;patch32(&b,success_disp,(int32_t)((intptr_t)b.count-(intptr_t)after));
+            break;
+        }
         case TURBOJS_IR_RUNTIME_HELPER:
             if(!return_bailout_at(&b,f,pc,5u)) goto oom;
             break;
@@ -255,7 +408,8 @@ TurboJSIRStatus TurboJS_BaselineCompile(const TurboJSIRFunction *f, TurboJSNativ
             if (!emit32(&b, 0))
                 goto oom;
             break;
-        case TURBOJS_IR_RETURN_I64: if(!load_slot(&b,0,in->left)||!return_success(&b)) goto oom; break;
+        case TURBOJS_IR_RETURN_I64:
+        case TURBOJS_IR_RETURN_F64: if(!load_slot(&b,0,in->left)||!return_success(&b)) goto oom; break;
         default: st=fail(diag,TURBOJS_IR_UNSUPPORTED,pc,"opcode requires interpreter fallback");goto done;
         }
     }
@@ -268,6 +422,7 @@ TurboJSIRStatus TurboJS_BaselineCompile(const TurboJSIRFunction *f, TurboJSNativ
     n->allocation_size=(b.count+4095u)&~(size_t)4095u; n->code=turbojs_executable_memory_allocate(n->allocation_size); if(!n->code) goto oom;
     memcpy(n->code,b.bytes,b.count); if(!turbojs_executable_memory_seal(n->code,n->allocation_size)){st=TURBOJS_IR_UNSUPPORTED;goto done;}
     n->code_size=b.count;n->argument_count=f->argument_count;n->register_count=f->register_count;n->local_count=f->local_count;n->instruction_count=f->instruction_count;
+    n->owned_clutch_sites=compiled_sites;n->owned_clutch_site_count=compiled_site_count;compiled_sites=NULL;compiled_site_count=0;
     TurboJS_SafepointControllerInit(&n->owned_safepoint);n->safepoint=&n->owned_safepoint;
     n->bytecode_offsets=(uint32_t*)malloc(f->instruction_count*sizeof(*n->bytecode_offsets));
     n->materialized_masks=(uint64_t*)calloc(f->instruction_count,sizeof(*n->materialized_masks));
@@ -287,20 +442,31 @@ TurboJSIRStatus TurboJS_BaselineCompile(const TurboJSIRFunction *f, TurboJSNativ
         n->materialized_masks[pc]=materialized;
         n->materialized_local_masks[pc]=materialized_locals;
         switch(in->opcode){
-        case TURBOJS_IR_ARGUMENT: case TURBOJS_IR_CONSTANT_I64:
+        case TURBOJS_IR_ARGUMENT: case TURBOJS_IR_CONSTANT_I64: case TURBOJS_IR_CONSTANT_F64:
         case TURBOJS_IR_ADD_I64: case TURBOJS_IR_SUB_I64: case TURBOJS_IR_MUL_I64:
+        case TURBOJS_IR_ADD_F64: case TURBOJS_IR_SUB_F64: case TURBOJS_IR_MUL_F64: case TURBOJS_IR_DIV_F64:
         case TURBOJS_IR_ADD_I32_CHECKED: case TURBOJS_IR_SUB_I32_CHECKED: case TURBOJS_IR_MUL_I32_CHECKED:
         case TURBOJS_IR_DIV_I32_CHECKED: case TURBOJS_IR_REM_I32_CHECKED:
-        case TURBOJS_IR_RUNTIME_HELPER: case TURBOJS_IR_LESS_THAN_I64: case TURBOJS_IR_LOCAL_GET:
+        case TURBOJS_IR_RUNTIME_HELPER: case TURBOJS_IR_CALL_NATIVE_I64: case TURBOJS_IR_CALL_NATIVE_F64: case TURBOJS_IR_LESS_THAN_I64:
+        case TURBOJS_IR_LESS_THAN_F64: case TURBOJS_IR_LESS_EQUAL_F64: case TURBOJS_IR_EQUAL_F64:
+        case TURBOJS_IR_I64_TO_F64: case TURBOJS_IR_F64_TO_I64_TRUNC: case TURBOJS_IR_LOCAL_GET:
             if(in->destination<64u) materialized|=((uint64_t)1u<<in->destination);
             if(in->destination<f->register_count)
-                n->register_kinds[in->destination]=(in->opcode==TURBOJS_IR_LESS_THAN_I64)?TURBOJS_VALUE_BOOLEAN:
-                    ((in->opcode>=TURBOJS_IR_ADD_I32_CHECKED&&in->opcode<=TURBOJS_IR_REM_I32_CHECKED)?TURBOJS_VALUE_I32:TURBOJS_VALUE_I64);
+                n->register_kinds[in->destination]=(in->opcode==TURBOJS_IR_LESS_THAN_I64||in->opcode==TURBOJS_IR_LESS_THAN_F64||in->opcode==TURBOJS_IR_LESS_EQUAL_F64||in->opcode==TURBOJS_IR_EQUAL_F64)?TURBOJS_VALUE_BOOLEAN:
+                    ((in->opcode>=TURBOJS_IR_ADD_I32_CHECKED&&in->opcode<=TURBOJS_IR_REM_I32_CHECKED)?TURBOJS_VALUE_I32:
+                    ((in->opcode==TURBOJS_IR_CONSTANT_F64||in->opcode==TURBOJS_IR_ADD_F64||in->opcode==TURBOJS_IR_SUB_F64||in->opcode==TURBOJS_IR_MUL_F64||in->opcode==TURBOJS_IR_DIV_F64||in->opcode==TURBOJS_IR_I64_TO_F64)?TURBOJS_VALUE_F64:TURBOJS_VALUE_I64));
             break;
         case TURBOJS_IR_LOCAL_SET:
             if(in->immediate>=0 && in->immediate<64) materialized_locals|=((uint64_t)1u<<(uint16_t)in->immediate);
             if(in->immediate>=0 && (uint64_t)in->immediate<f->local_count)
                 n->local_kinds[(uint16_t)in->immediate]=in->left<f->register_count?n->register_kinds[in->left]:TURBOJS_VALUE_UNKNOWN;
+            break;
+        case TURBOJS_IR_RETURN_I64:
+            n->result_kind=in->left<f->register_count?n->register_kinds[in->left]:
+                TURBOJS_VALUE_I64;
+            break;
+        case TURBOJS_IR_RETURN_F64:
+            n->result_kind=TURBOJS_VALUE_F64;
             break;
         default: break;
         }
@@ -312,8 +478,9 @@ TurboJSIRStatus TurboJS_BaselineCompile(const TurboJSIRFunction *f, TurboJSNativ
         uint16_t k;
         if(in->opcode>=TURBOJS_IR_ADD_I32_CHECKED && in->opcode<=TURBOJS_IR_REM_I32_CHECKED) kind=TURBOJS_SAFEPOINT_BAILOUT;
         else if(in->opcode==TURBOJS_IR_RUNTIME_HELPER) kind=TURBOJS_SAFEPOINT_RUNTIME_CALL;
+        else if(in->opcode==TURBOJS_IR_CALL_NATIVE_I64 || in->opcode==TURBOJS_IR_CALL_NATIVE_F64) kind=TURBOJS_SAFEPOINT_CLUTCH_CALL;
         else if((in->opcode==TURBOJS_IR_JUMP||in->opcode==TURBOJS_IR_BRANCH_TRUE||in->opcode==TURBOJS_IR_BRANCH_FALSE)&&in->target<=pc) kind=TURBOJS_SAFEPOINT_LOOP_BACKEDGE;
-        else if(in->opcode==TURBOJS_IR_RETURN_I64) kind=TURBOJS_SAFEPOINT_RETURN;
+        else if(in->opcode==TURBOJS_IR_RETURN_I64||in->opcode==TURBOJS_IR_RETURN_F64) kind=TURBOJS_SAFEPOINT_RETURN;
         if(!kind) continue;
         for(k=0;k<f->register_count&&k<64u;k++) if(n->register_kinds[k]==TURBOJS_VALUE_HEAP_REFERENCE) ref_regs|=((uint64_t)1u<<k);
         for(k=0;k<f->local_count&&k<64u;k++) if(n->local_kinds[k]==TURBOJS_VALUE_HEAP_REFERENCE) ref_locals|=((uint64_t)1u<<k);
@@ -321,9 +488,10 @@ TurboJSIRStatus TurboJS_BaselineCompile(const TurboJSIRFunction *f, TurboJSNativ
     }
     *out=n;n=NULL;st=TURBOJS_IR_OK;
     if(diag){diag->status=st;diag->instruction_index=0;diag->message="ok";} goto done;
+invalid: st=TURBOJS_IR_INVALID_ARGUMENT; goto done;
 oom: st=TURBOJS_IR_OUT_OF_MEMORY;
 done:
-    if(n){if(n->code)turbojs_executable_memory_free(n->code,n->allocation_size);free(n->bytecode_offsets);free(n->materialized_masks);free(n->materialized_local_masks);free(n->live_register_masks);free(n->live_local_masks);free(n->register_kinds);free(n->local_kinds);free(n->deopt_values);free(n->stack_maps);free(n);} free(i_offsets);free(patches);free(b.bytes);return st;
+    if(n){if(n->code)turbojs_executable_memory_free(n->code,n->allocation_size);free(n->bytecode_offsets);free(n->materialized_masks);free(n->materialized_local_masks);free(n->live_register_masks);free(n->live_local_masks);free(n->register_kinds);free(n->local_kinds);free(n->deopt_values);free(n->stack_maps);destroy_clutch_sites(n->owned_clutch_sites,n->owned_clutch_site_count);free(n);} destroy_clutch_sites(compiled_sites,compiled_site_count);free(i_offsets);free(patches);free(b.bytes);return st;
 #endif
 }
 
@@ -368,5 +536,90 @@ void TurboJS_SafepointRequest(TurboJSSafepointController *c){if(c){c->epoch++;c-
 void TurboJS_SafepointClear(TurboJSSafepointController *c){if(c)c->requested=0;}
 void TurboJS_NativeSetSafepointController(TurboJSNativeFunction *f,TurboJSSafepointController *c){if(f)f->safepoint=c?c:&f->owned_safepoint;}
 
-void TurboJS_NativeFunctionDestroy(TurboJSNativeFunction*f){if(!f)return;turbojs_executable_memory_free(f->code,f->allocation_size);free(f->bytecode_offsets);free(f->materialized_masks);free(f->materialized_local_masks);free(f->live_register_masks);free(f->live_local_masks);free(f->register_kinds);free(f->local_kinds);free(f->deopt_values);free(f->stack_maps);free(f);}
+
+size_t TurboJS_NativeInvalidateClutchTarget(
+    TurboJSNativeFunction *function,
+    const TurboJSNativeEntryHandle *target)
+{
+    size_t i, invalidated = 0;
+    if (!function || !target)
+        return 0;
+    for (i = 0; i < function->owned_clutch_site_count; ++i) {
+        TurboJSClutchCallSite *site = &function->owned_clutch_sites[i];
+        if (site->target == target) {
+            site->target = NULL;
+            site->expected_generation = 0;
+            invalidated++;
+        }
+    }
+    return invalidated;
+}
+
+size_t TurboJS_NativeRepatchClutchIdentity(
+    TurboJSNativeFunction *function, uint64_t target_identity,
+    const TurboJSNativeEntryHandle *target, uint64_t generation,
+    TurboJSNativeEntryKind kind, uint16_t argument_count,
+    size_t *incompatible)
+{
+    size_t i, patched = 0, rejected = 0;
+    if (!function || !target_identity || !target)
+        return 0;
+    for (i = 0; i < function->owned_clutch_site_count; ++i) {
+        TurboJSClutchCallSite *site = &function->owned_clutch_sites[i];
+        if (site->target_identity != target_identity)
+            continue;
+        if (site->expected_kind != (uint8_t)kind ||
+            site->argument_count != argument_count) {
+            rejected++;
+            continue;
+        }
+        site->target = target;
+        site->expected_generation = generation;
+        patched++;
+    }
+    if (incompatible)
+        *incompatible += rejected;
+    return patched;
+}
+
+size_t TurboJS_NativeClutchSiteCount(const TurboJSNativeFunction *function)
+{
+    return function ? function->owned_clutch_site_count : 0;
+}
+
+const TurboJSNativeEntryHandle *TurboJS_NativeClutchSiteTargetAt(
+    const TurboJSNativeFunction *function, size_t index)
+{
+    if (!function || index >= function->owned_clutch_site_count)
+        return NULL;
+    return function->owned_clutch_sites[index].target;
+}
+
+uint64_t TurboJS_NativeClutchSiteIdentityAt(
+    const TurboJSNativeFunction *function, size_t index)
+{
+    if (!function || index >= function->owned_clutch_site_count)
+        return 0;
+    return function->owned_clutch_sites[index].target_identity;
+}
+
+void TurboJS_NativeFunctionDestroy(TurboJSNativeFunction*f){if(!f)return;turbojs_executable_memory_free(f->code,f->allocation_size);free(f->bytecode_offsets);free(f->materialized_masks);free(f->materialized_local_masks);free(f->live_register_masks);free(f->live_local_masks);free(f->register_kinds);free(f->local_kinds);free(f->deopt_values);free(f->stack_maps);destroy_clutch_sites(f->owned_clutch_sites,f->owned_clutch_site_count);free(f);}
 size_t TurboJS_NativeCodeSize(const TurboJSNativeFunction*f){return f?f->code_size:0;}
+TurboJSValueKind TurboJS_NativeResultKind(const TurboJSNativeFunction*f){return f?f->result_kind:TURBOJS_VALUE_UNKNOWN;}
+
+TurboJSIRStatus TurboJS_NativeInvokeF64(const TurboJSNativeFunction *function,
+                                        const double *arguments,
+                                        size_t argument_count,
+                                        double *result)
+{
+    int64_t arg_bits[TURBOJS_IR_MAX_REGISTERS] = {0};
+    int64_t result_bits = 0;
+    size_t i;
+    TurboJSIRStatus status;
+    if (!result || argument_count > TURBOJS_IR_MAX_REGISTERS || (argument_count && !arguments))
+        return TURBOJS_IR_INVALID_ARGUMENT;
+    for (i = 0; i < argument_count; ++i) memcpy(&arg_bits[i], &arguments[i], sizeof(double));
+    status = TurboJS_NativeInvoke(function, arg_bits, argument_count, &result_bits);
+    if (status == TURBOJS_IR_OK) memcpy(result, &result_bits, sizeof(double));
+    return status;
+}

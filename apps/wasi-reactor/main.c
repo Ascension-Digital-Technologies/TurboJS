@@ -208,7 +208,3 @@ void turbojs_destroy(void)
 }
 
 /* Deprecated WASI export aliases retained for existing hosts. */
-__attribute__((export_name("qjs_init"))) int qjs_init(void) { return turbojs_init(); }
-__attribute__((export_name("qjs_init_argv"))) int qjs_init_argv(int argc, char **argv) { return turbojs_init_argv(argc, argv); }
-__attribute__((export_name("qjs_get_context"))) JSContext *qjs_get_context(void) { return turbojs_get_context(); }
-__attribute__((export_name("qjs_destroy"))) void qjs_destroy(void) { turbojs_destroy(); }

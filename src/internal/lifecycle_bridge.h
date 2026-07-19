@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_LIFECYCLE_BRIDGE_H
-#define QJS_INTERNAL_LIFECYCLE_BRIDGE_H
+#ifndef TURBOJS_INTERNAL_LIFECYCLE_BRIDGE_H
+#define TURBOJS_INTERNAL_LIFECYCLE_BRIDGE_H
 #include <turbojs.h>
 JSRuntime *turbojs_internal_new_runtime2(const JSMallocFunctions *mf, void *opaque);
 JSRuntime *turbojs_internal_new_runtime(void);

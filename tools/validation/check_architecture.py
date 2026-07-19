@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
-manifest_path = root / 'src/subsystems.json'
+manifest_path = root / 'cmake/TurboJSSubsystems.json'
 manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
 errors=[]
 expected=[]
@@ -45,7 +45,7 @@ if max_lines:
         count=(root/'src'/source).read_text(encoding='utf-8',errors='replace').count('\n')+1
         if count>max_lines: errors.append(f'domain source exceeds {max_lines}-line limit: {source} ({count})')
 
-public=(root/'src/api/turbojs.h').read_text(encoding='utf-8',errors='replace')
+public=(root/'include/turbojs/turbojs.h').read_text(encoding='utf-8',errors='replace')
 if 'internal/' in public: errors.append('public TurboJS header leaks private header')
 for unit in manifest.get('standalone_units',[]):
     if not (root/unit['path']).is_file(): errors.append(f"missing standalone unit: {unit['path']}")

@@ -95,7 +95,7 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
     js_free(ctx, m);
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 static int add_req_module_entry(JSContext *ctx, JSModuleDef *m,
                                 JSAtom module_name)
@@ -122,5 +122,5 @@ static int add_req_module_entry(JSContext *ctx, JSModuleDef *m,
     return i;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 

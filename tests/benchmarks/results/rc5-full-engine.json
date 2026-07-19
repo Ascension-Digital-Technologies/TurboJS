@@ -1,0 +1,299 @@
+{
+  "methodology": {
+    "suite": "tests/benchmarks/full_engine/full_engine_sustained.js",
+    "warmups_per_workload": 3,
+    "measured_runs_per_workload": 9,
+    "aggregation": "median per workload; unweighted geometric mean of TurboJS/Node ratios",
+    "notes": [
+      "same JavaScript source and checksums",
+      "single-process sustained measurements",
+      "separate cold startup and parse/compile process measurements",
+      "no narrow-path results included in aggregate"
+    ]
+  },
+  "environment": {
+    "os": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "python": "3.13.5",
+    "turbojs_version": "0.16.0-rc.5",
+    "node_version": "v22.16.0"
+  },
+  "sustained": {
+    "workloads": [
+      {
+        "workload": "integer_mix",
+        "repetitions": 20,
+        "turbojs_median_ms": 172.14507899992168,
+        "node_median_ms": 2.3177189999999968,
+        "ratio": 74.27349001320778,
+        "checksum": -9420179160
+      },
+      {
+        "workload": "float_numeric",
+        "repetitions": 20,
+        "turbojs_median_ms": 14.09674399998039,
+        "node_median_ms": 2.2623569999999944,
+        "ratio": 6.2309989095356855,
+        "checksum": 51625.784266619055
+      },
+      {
+        "workload": "calls_monomorphic",
+        "repetitions": 10,
+        "turbojs_median_ms": 298.25722400005907,
+        "node_median_ms": 1.293342999999993,
+        "ratio": 230.60953204220434,
+        "checksum": -1284421440
+      },
+      {
+        "workload": "calls_polymorphic",
+        "repetitions": 20,
+        "turbojs_median_ms": 21.1498080000747,
+        "node_median_ms": 0.6498909999999967,
+        "ratio": 32.54362346928148,
+        "checksum": -14713600960
+      },
+      {
+        "workload": "closures",
+        "repetitions": 15,
+        "turbojs_median_ms": 12.840816000010818,
+        "node_median_ms": 0.16075799999998708,
+        "ratio": 79.87668420863565,
+        "checksum": 270450000
+      },
+      {
+        "workload": "object_access",
+        "repetitions": 4,
+        "turbojs_median_ms": 38.332323000067845,
+        "node_median_ms": 0.923326000000003,
+        "ratio": 41.515480989453046,
+        "checksum": 3742608000
+      },
+      {
+        "workload": "object_polymorphic",
+        "repetitions": 4,
+        "turbojs_median_ms": 19.900815000059083,
+        "node_median_ms": 0.5419019999999932,
+        "ratio": 36.72401098364526,
+        "checksum": 359940000
+      },
+      {
+        "workload": "dense_arrays",
+        "repetitions": 10,
+        "turbojs_median_ms": 45.42481100000441,
+        "node_median_ms": 0.6822090000000003,
+        "ratio": 66.5848896745783,
+        "checksum": 10799100000
+      },
+      {
+        "workload": "holey_arrays",
+        "repetitions": 20,
+        "turbojs_median_ms": 72.89926499989815,
+        "node_median_ms": 1.1208879999999795,
+        "ratio": 65.03706436316517,
+        "checksum": 1919520000
+      },
+      {
+        "workload": "typed_arrays",
+        "repetitions": 4,
+        "turbojs_median_ms": 178.67740100016817,
+        "node_median_ms": 3.3618929999999807,
+        "ratio": 53.14785479495308,
+        "checksum": 10802377803.633003
+      },
+      {
+        "workload": "string_ops",
+        "repetitions": 20,
+        "turbojs_median_ms": 13.14809100003913,
+        "node_median_ms": 1.5204699999999889,
+        "ratio": 8.64738600566879,
+        "checksum": 352320
+      },
+      {
+        "workload": "json_ops",
+        "repetitions": 1,
+        "turbojs_median_ms": 30.532703999895602,
+        "node_median_ms": 5.885200999999995,
+        "ratio": 5.1880477828872165,
+        "checksum": 597295
+      },
+      {
+        "workload": "regexp_ops",
+        "repetitions": 4,
+        "turbojs_median_ms": 9.85270499996841,
+        "node_median_ms": 1.7039709999999673,
+        "ratio": 5.782202279245714,
+        "checksum": 300000
+      },
+      {
+        "workload": "array_sort",
+        "repetitions": 3,
+        "turbojs_median_ms": 8.118671000003815,
+        "node_median_ms": 3.2176599999999667,
+        "ratio": 2.5231599982608164,
+        "checksum": -1811505
+      },
+      {
+        "workload": "exceptions",
+        "repetitions": 8,
+        "turbojs_median_ms": 11.968254999956116,
+        "node_median_ms": 2.0356009999999856,
+        "ratio": 5.879469994343784,
+        "checksum": 671104
+      },
+      {
+        "workload": "recursion",
+        "repetitions": 1,
+        "turbojs_median_ms": 216.45372600015253,
+        "node_median_ms": 14.978789000000006,
+        "ratio": 14.45068262862588,
+        "checksum": 1014750
+      },
+      {
+        "workload": "allocation_gc_pressure",
+        "repetitions": 2,
+        "turbojs_median_ms": 12.493182000005618,
+        "node_median_ms": 0.8474840000000086,
+        "ratio": 14.741496004650815,
+        "checksum": 32000
+      },
+      {
+        "workload": "mini_application",
+        "repetitions": 4,
+        "turbojs_median_ms": 49.1096719999332,
+        "node_median_ms": 2.0932769999999437,
+        "ratio": 23.460665740814292,
+        "checksum": 95907696
+      }
+    ],
+    "geometric_mean_ratio": 22.30823144685455,
+    "median_ratio": 28.002144605047885,
+    "turbojs_total_of_medians_ms": 1225.4012920001987,
+    "node_total_of_medians_ms": 45.596738999999786
+  },
+  "cold_process": {
+    "empty": {
+      "TurboJS": {
+        "median_ms": 8.934912,
+        "mean_ms": 8.95724880952381,
+        "min_ms": 7.494942,
+        "max_ms": 12.696533,
+        "runs_ms": [
+          7.494942,
+          9.133787,
+          8.626411,
+          8.498889,
+          8.934912,
+          7.677048,
+          7.520575,
+          8.137363,
+          12.696533,
+          9.056127,
+          9.950771,
+          10.588564,
+          8.272442,
+          9.456204,
+          9.655254,
+          8.081486,
+          9.133682,
+          8.160001,
+          9.255623,
+          8.781932,
+          8.989679
+        ],
+        "output": ""
+      },
+      "Node/V8": {
+        "median_ms": 56.579061,
+        "mean_ms": 56.48557457142857,
+        "min_ms": 54.562243,
+        "max_ms": 58.005892,
+        "runs_ms": [
+          57.940871,
+          57.554219,
+          56.971402,
+          54.562243,
+          54.902136,
+          56.6456,
+          56.418434,
+          55.664018,
+          57.549783,
+          56.334255,
+          56.017176,
+          55.983105,
+          55.528637,
+          58.005892,
+          57.018281,
+          55.488753,
+          57.155519,
+          55.440667,
+          57.78162,
+          56.579061,
+          56.655394
+        ],
+        "output": ""
+      },
+      "ratio": 0.15791905772349243
+    },
+    "parse_compile": {
+      "TurboJS": {
+        "median_ms": 71.469806,
+        "mean_ms": 71.50472706666666,
+        "min_ms": 67.874817,
+        "max_ms": 75.594076,
+        "runs_ms": [
+          73.419705,
+          73.258531,
+          75.594076,
+          72.695658,
+          70.05433,
+          74.834993,
+          67.874817,
+          70.724759,
+          69.49489,
+          72.357263,
+          68.894972,
+          70.564762,
+          71.469806,
+          69.666949,
+          71.665395
+        ],
+        "output": "2829168"
+      },
+      "Node/V8": {
+        "median_ms": 70.249967,
+        "mean_ms": 70.46939106666666,
+        "min_ms": 67.19659,
+        "max_ms": 76.560352,
+        "runs_ms": [
+          69.04902,
+          69.848758,
+          68.954164,
+          70.249967,
+          70.022185,
+          70.502145,
+          69.174095,
+          70.690539,
+          71.430403,
+          67.19659,
+          71.706116,
+          70.359419,
+          71.184634,
+          70.112479,
+          76.560352
+        ],
+        "output": "2829168"
+      },
+      "ratio": 1.0173642643846368
+    }
+  },
+  "binary_size_bytes": {
+    "TurboJS": 1654392,
+    "Node/V8": 121509208
+  },
+  "peak_rss_kib": {
+    "full_suite": {
+      "TurboJS": 8400,
+      "Node/V8": 158756
+    }
+  }
+}

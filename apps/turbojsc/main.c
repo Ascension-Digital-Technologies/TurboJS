@@ -32,7 +32,7 @@
 #include <errno.h>
 
 #include "internal/cutils.h"
-#include "src/api/turbojs-libc.h"
+#include <turbojs-libc.h>
 
 typedef enum {
     OUTPUT_C,
@@ -358,7 +358,7 @@ void help(void)
 // TODO(bnoordhuis) share with apps/turbojs/main.c maybe
 static int64_t parse_limit(const char *arg) {
     char *p;
-    unsigned long unit = 1; // bytes for backcompat; qjs defaults to kilobytes
+    unsigned long unit = 1; /* byte units */
     double d = strtod(arg, &p);
 
     if (p == arg) {
@@ -546,9 +546,6 @@ int main(int argc, char **argv)
         namelist_add(&cmodule_list, "turbojs:std", "std", 0);
         namelist_add(&cmodule_list, "turbojs:os", "os", 0);
         namelist_add(&cmodule_list, "turbojs:bjson", "bjson", 0);
-        namelist_add(&cmodule_list, "qjs:std", "std", 0);
-        namelist_add(&cmodule_list, "qjs:os", "os", 0);
-        namelist_add(&cmodule_list, "qjs:bjson", "bjson", 0);
         namelist_add(&cmodule_list, "std", "std", 0);
         namelist_add(&cmodule_list, "os", "os", 0);
         namelist_add(&cmodule_list, "bjson", "bjson", 0);
@@ -586,7 +583,7 @@ int main(int argc, char **argv)
     }
 
     if (output_type == OUTPUT_C_MAIN) {
-        fprintf(fo, "#include \"src/api/turbojs-libc.h\"\n"
+        fprintf(fo, "#include \"include/turbojs/turbojs-libc.h\"\n"
                 "\n"
                 );
     } else if (output_type == OUTPUT_C) {

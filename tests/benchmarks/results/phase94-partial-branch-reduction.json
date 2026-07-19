@@ -1,0 +1,21 @@
+{
+  "phase": 94,
+  "workload": "multi_conditional_sustained",
+  "iterations": 10000000,
+  "warmups": 5,
+  "measured_calls": 15,
+  "TurboJS": {
+    "result": -999630016,
+    "median_ms": 17.83330900000874,
+    "min_ms": 17.66220700001577,
+    "max_ms": 19.046688000002177
+  },
+  "Node/V8": {
+    "result": -999630016,
+    "median_ms": 24.67328500000002,
+    "min_ms": 24.515393000000017,
+    "max_ms": 24.741535999999996
+  },
+  "ratio": 0.7227780573202444,
+  "optimization": "partial analytical extraction of reducible steps"
+}

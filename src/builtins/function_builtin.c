@@ -1077,6 +1077,7 @@ static JSValue js_array_sort(JSContext *ctx, JSValueConst this_val,
     size_t array_size = 0, pos = 0, n = 0;
     int64_t i, len, undefined_count = 0;
     int present;
+    int used_dense_fast_path = 0;
 
     if (!JS_IsUndefined(asc.method)) {
         if (check_function(ctx, asc.method))
@@ -1087,7 +1088,46 @@ static JSValue js_array_sort(JSContext *ctx, JSValueConst this_val,
     if (js_get_length64(ctx, &len, obj))
         goto exception;
 
-    /* XXX: should special case fast arrays */
+    /* Dense fast arrays can be collected directly.  The generic property
+     * path remains mandatory for holes because indexed prototype properties
+     * are observable.  Sorting still writes through the normal property API,
+     * so comparator side effects and descriptor changes preserve semantics.
+     */
+    if (len >= 0 && (uint64_t)len <= SIZE_MAX / sizeof(*array) &&
+        JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
+        JSObject *p = JS_VALUE_GET_OBJ(obj);
+        if (p->class_id == JS_CLASS_ARRAY && p->fast_array &&
+            (uint64_t)len == p->u.array.count) {
+            size_t dense_count = (size_t)len;
+            for (pos = 0; pos < dense_count; pos++) {
+                if (JS_IsUninitialized(p->u.array.u.values[pos]))
+                    break;
+            }
+            if (pos == dense_count) {
+                array = js_malloc(ctx, dense_count * sizeof(*array));
+                if (dense_count != 0 && array == NULL)
+                    goto exception;
+                array_size = dense_count;
+                pos = 0;
+                for (i = 0; i < len; i++) {
+                    JSValue val = p->u.array.u.values[i];
+                    if (JS_IsUndefined(val)) {
+                        undefined_count++;
+                        continue;
+                    }
+                    array[pos].val = js_dup(val);
+                    array[pos].str = NULL;
+                    array[pos].pos = i;
+                    pos++;
+                }
+                used_dense_fast_path = 1;
+            } else {
+                pos = 0;
+            }
+        }
+    }
+
+    if (!used_dense_fast_path)
     for (i = 0; i < len; i++) {
         if (pos >= array_size) {
             size_t new_size, slack;

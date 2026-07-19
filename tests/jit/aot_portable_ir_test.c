@@ -9,5 +9,5 @@ int main(void){TurboJSIRFunction a,b;TurboJSAOTBuffer image={0};TurboJSIRDiagnos
  CHECK(TurboJS_AOTSerializeIR(&a,&image,&d)==TURBOJS_IR_OK);CHECK(image.size>32);CHECK(TurboJS_AOTDeserializeIR(image.data,image.size,&b,&d)==TURBOJS_IR_OK);
  CHECK(TurboJS_IRExecute(&b,args,2,&x)==TURBOJS_IR_OK);CHECK(TurboJS_BaselineCompile(&b,&n,&d)==TURBOJS_IR_OK);CHECK(TurboJS_NativeInvoke(n,args,2,&y)==TURBOJS_IR_OK);CHECK(x==42&&y==42);
  args[0]=INT32_MAX;args[1]=1;CHECK(TurboJS_NativeInvoke(n,args,2,&y)==TURBOJS_IR_BAILOUT);bi=TurboJS_NativeLastBailout(n);CHECK(bi.reason==TURBOJS_BAILOUT_INTEGER_OVERFLOW);CHECK(bi.instruction_index==2);
- image.data[image.size-1]^=1;TurboJS_IRFunctionInit(&a,0);CHECK(TurboJS_AOTDeserializeIR(image.data,image.size,&a,&d)!=TURBOJS_IR_OK);
+ image.data[image.size-1]^=1;TurboJS_IRFunctionDestroy(&a);TurboJS_IRFunctionInit(&a,0);CHECK(TurboJS_AOTDeserializeIR(image.data,image.size,&a,&d)!=TURBOJS_IR_OK);
  TurboJS_NativeFunctionDestroy(n);TurboJS_IRFunctionDestroy(&b);TurboJS_IRFunctionDestroy(&a);TurboJS_AOTBufferDestroy(&image);puts("portable AOT IR and precise bailout tests passed");return 0;}

@@ -49,8 +49,8 @@ int main(void) {
 
     if (TurboJS_EngineBytecodeToIR(&info, &ir, &diagnostic) != TURBOJS_IR_OK)
         return fail(diagnostic.message ? diagnostic.message : "translation failed");
-    if (ir.local_count != 1)
-        return fail("local count was not preserved");
+    if (ir.source_local_count != 1 || ir.local_count != 3)
+        return fail("source or physical local count was not preserved");
     if (TurboJS_BaselineCompile(&ir, &native, &diagnostic) != TURBOJS_IR_OK) {
         TurboJS_IRFunctionDestroy(&ir);
         return fail(diagnostic.message ? diagnostic.message : "native compile failed");

@@ -33,7 +33,7 @@
 #include "src/unicode/unicode.h"
 
 /* ASCII identifier tables, used by lre_js_is_ident_first/next in src/regexp/regexp.h
-   and by src/api/legacy_api.c. */
+   and by tools/amalgamation/engine_unit.c. */
 uint32_t const lre_id_start_table_ascii[4] = {
     /* $ A-Z _ a-z */
     0x00000000, 0x00000010, 0x87FFFFFE, 0x07FFFFFE

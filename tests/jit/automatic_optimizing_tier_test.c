@@ -26,7 +26,7 @@ int main(void)
     TurboJSTieredResult route=TURBOJS_TIERED_INTERPRETED;
     TurboJSIRDiagnostic diagnostic;
     TurboJSTieredStats stats;
-    int key, i; int64_t args[2], result=0;
+    int key = 0, i; int64_t args[2], result=0;
     CHECK(build_add(&ir)==0);
     cache=TurboJS_CodeCacheCreate(8,65536); CHECK(cache!=NULL);
     policy.minimum_executions=5; policy.maximum_bailouts=2; policy.maximum_exceptions=1;

@@ -24,7 +24,7 @@ int main(void)
         OP_mul,
         OP_return
     };
-    TurboJSEngineBytecodeInfo input = { code, sizeof(code), 2, 0, 3 };
+    TurboJSEngineBytecodeInfo input = { code, sizeof(code), 2, 0, 3, TURBOJS_ENGINE_NUMERIC_INT32 };
     TurboJSIRFunction ir;
     TurboJSIRDiagnostic diagnostic = {0};
     TurboJSNativeFunction *native = NULL;

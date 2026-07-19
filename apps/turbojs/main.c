@@ -32,18 +32,25 @@
 #include <fcntl.h>
 #include <time.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#if defined(_DEBUG)
+#include <crtdbg.h>
+#endif
+#endif
+
 #include "internal/cutils.h"
 #include <turbojs.h>
-#include "src/api/turbojs-libc.h"
+#include <turbojs-libc.h>
 
-#ifdef QJS_USE_MIMALLOC
+#ifdef TURBOJS_USE_MIMALLOC
 #include <mimalloc.h>
 #endif
 
-extern const uint8_t qjsc_repl[];
-extern const uint32_t qjsc_repl_size;
-extern const uint8_t qjsc_standalone[];
-extern const uint32_t qjsc_standalone_size;
+extern const uint8_t turbojsc_repl[];
+extern const uint32_t turbojsc_repl_size;
+extern const uint8_t turbojsc_standalone[];
+extern const uint32_t turbojsc_standalone_size;
 
 #if defined(EMSCRIPTEN) || defined(__wasi__)
 // Standalone executables (the --compile option and detecting/running an
@@ -51,6 +58,23 @@ extern const uint32_t qjsc_standalone_size;
 #define emscripten_or_wasi 1
 #else
 #define emscripten_or_wasi 0
+#endif
+
+#if defined(_WIN32)
+static void turbojs_disable_windows_error_dialogs(void)
+{
+    /* Test262 intentionally executes malformed and adversarial programs.
+       Never allow a child process failure to open a modal Windows dialog. */
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX |
+                 SEM_NOOPENFILEERRORBOX);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#if defined(_DEBUG)
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+#endif
+}
 #endif
 
 static int turbojs_argc;
@@ -83,7 +107,7 @@ static JSValue load_standalone_module(JSContext *ctx)
 {
     JSModuleDef *m;
     JSValue obj, val;
-    obj = JS_ReadObject(ctx, qjsc_standalone, qjsc_standalone_size, JS_READ_OBJ_BYTECODE);
+    obj = JS_ReadObject(ctx, turbojsc_standalone, turbojsc_standalone_size, JS_READ_OBJ_BYTECODE);
     if (JS_IsException(obj))
         goto exception;
     assert(JS_VALUE_GET_TAG(obj) == JS_TAG_MODULE);
@@ -237,10 +261,6 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     js_init_module_std(ctx, "turbojs:std");
     js_init_module_os(ctx, "turbojs:os");
     js_init_module_bjson(ctx, "turbojs:bjson");
-    /* Retain the established QuickJS module specifiers for compatibility. */
-    js_init_module_std(ctx, "qjs:std");
-    js_init_module_os(ctx, "qjs:os");
-    js_init_module_bjson(ctx, "qjs:bjson");
 
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyFunctionList(ctx, global, global_obj, countof(global_obj));
@@ -349,7 +369,7 @@ static const JSMallocFunctions trace_mf = {
     js__malloc_usable_size
 };
 
-#ifdef QJS_USE_MIMALLOC
+#ifdef TURBOJS_USE_MIMALLOC
 static void *js_mi_calloc(void *opaque, size_t count, size_t size)
 {
     return mi_calloc(count, size);
@@ -397,7 +417,13 @@ void help(int exit_status)
            "    --std          make 'std', 'os' and 'bjson' available to script\n"
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
-           "-D  --dump-flags   flags for dumping debug data (see DUMP_* defines)\n",
+           "-D  --dump-flags   flags for dumping debug data (see DUMP_* defines)\n"
+           "    --jit-stats    print Redline/Spool/Slipstream execution statistics\n"
+           "    --jit-stats-json print JIT statistics as one JSON object\n"
+           "    --jit-threshold n set the baseline tier-up threshold\n"
+           "    --opt-threshold n set the optimizing tier-up threshold\n"
+           "    --osr-threshold n set the loop backedge OSR threshold\n"
+           "    --no-jit       disable native execution for this runtime\n",
            JS_GetVersion());
     if (!emscripten_or_wasi)
         printf("-c  --compile FILE compile the given JS file as a standalone executable\n"
@@ -411,6 +437,9 @@ void help(int exit_status)
 
 int main(int argc, char **argv)
 {
+#if defined(_WIN32)
+    turbojs_disable_windows_error_dialogs();
+#endif
     JSRuntime *rt;
     JSContext *ctx;
     struct trace_malloc_data trace_data = { NULL };
@@ -436,6 +465,12 @@ int main(int argc, char **argv)
     int i, include_count = 0;
     int64_t memory_limit = -1;
     int64_t stack_size = -1;
+    uint32_t jit_threshold = 0;
+    uint32_t opt_threshold = 0;
+    uint32_t osr_threshold = 0;
+    int jit_stats = 0;
+    int jit_stats_json = 0;
+    int disable_jit = 0;
 
     /* save for later */
     turbojs_argc = argc;
@@ -448,7 +483,6 @@ int main(int argc, char **argv)
         goto start;
     }
 
-    dump_flags_str = getenv("QJS_DUMP_FLAGS");
     dump_flags = dump_flags_str ? strtol(dump_flags_str, NULL, 16) : 0;
 
     /* cannot use getopt because we want to pass the command line to
@@ -540,6 +574,42 @@ int main(int argc, char **argv)
                 empty_run++;
                 continue;
             }
+            if (!strcmp(longopt, "jit-stats")) {
+                jit_stats = 1;
+                continue;
+            }
+            if (!strcmp(longopt, "jit-stats-json")) {
+                jit_stats_json = 1;
+                continue;
+            }
+            if (!strcmp(longopt, "no-jit")) {
+                disable_jit = 1;
+                continue;
+            }
+            if (!strcmp(longopt, "jit-threshold") ||
+                !strcmp(longopt, "opt-threshold") ||
+                !strcmp(longopt, "osr-threshold")) {
+                unsigned long parsed;
+                char *end = NULL;
+                const char *name = longopt;
+                if (!optarg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "turbojs: expecting value for --%s\n", name);
+                        exit(1);
+                    }
+                    optarg = argv[optind++];
+                }
+                errno = 0;
+                parsed = strtoul(optarg, &end, 10);
+                if (errno || end == optarg || *end || parsed == 0 || parsed > UINT32_MAX) {
+                    fprintf(stderr, "turbojs: invalid --%s value: %s\n", name, optarg);
+                    exit(1);
+                }
+                if (!strcmp(name, "jit-threshold")) jit_threshold = (uint32_t)parsed;
+                else if (!strcmp(name, "opt-threshold")) opt_threshold = (uint32_t)parsed;
+                else osr_threshold = (uint32_t)parsed;
+                break;
+            }
             if (!strcmp(longopt, "memory-limit")) {
                 if (!optarg) {
                     if (optind >= argc) {
@@ -614,7 +684,7 @@ start:
         js_trace_malloc_init(&trace_data);
         rt = JS_NewRuntime2(&trace_mf, &trace_data);
     } else {
-#ifdef QJS_USE_MIMALLOC
+#ifdef TURBOJS_USE_MIMALLOC
         rt = JS_NewRuntime2(&mi_mf, NULL);
 #else
         rt = JS_NewRuntime();
@@ -623,6 +693,18 @@ start:
     if (!rt) {
         fprintf(stderr, "turbojs: cannot allocate JS runtime\n");
         exit(2);
+    }
+    {
+        TurboJSOptimizationConfig optimization = TurboJS_GetRuntimeOptimizationConfig(rt);
+        if (jit_threshold) optimization.baseline_threshold = jit_threshold;
+        if (opt_threshold) optimization.optimizing_threshold = opt_threshold;
+        if (osr_threshold) optimization.osr_threshold = osr_threshold;
+        if (disable_jit) {
+            optimization.enable_jit = 0;
+            optimization.enable_optimizing_jit = 0;
+            optimization.enable_osr = 0;
+        }
+        TurboJS_SetRuntimeOptimizationConfig(rt, &optimization);
     }
     if (memory_limit >= 0)
         JS_SetMemoryLimit(rt, (size_t)memory_limit);
@@ -706,7 +788,7 @@ start:
         }
         if (interactive) {
             JS_SetHostPromiseRejectionTracker(rt, NULL, NULL);
-            js_std_eval_binary(ctx, qjsc_repl, qjsc_repl_size, 0);
+            js_std_eval_binary(ctx, turbojsc_repl, turbojsc_repl_size, 0);
         }
         if (standalone || compile_file) {
             if (JS_IsException(ret)) {
@@ -724,6 +806,152 @@ start:
         }
     }
 
+    if (jit_stats || jit_stats_json) {
+        TurboJSOptimizationConfig optimization = TurboJS_GetRuntimeOptimizationConfig(rt);
+        TurboJSRuntimeJITStats stats = TurboJS_GetRuntimeJITStats(rt);
+        double native_ratio = (stats.native_calls + stats.interpreted_calls) ?
+            (100.0 * (double)stats.native_calls /
+             (double)(stats.native_calls + stats.interpreted_calls)) : 0.0;
+        if (jit_stats_json) {
+            printf("{\"baseline_threshold\":%u,\"optimizing_threshold\":%u,"
+                   "\"osr_threshold\":%u,\"jit_enabled\":%u,"
+                   "\"optimizing_enabled\":%u,\"osr_enabled\":%u,"
+                   "\"interpreted_calls\":%" PRIu64 ",\"native_calls\":%" PRIu64 ","
+                   "\"native_call_percent\":%.3f,\"guard_failures\":%" PRIu64 ","
+                   "\"baseline_compile_requests\":%" PRIu64 ","
+                   "\"baseline_compilations\":%" PRIu64 ",\"baseline_compile_failures\":%" PRIu64 ","
+                   "\"optimizing_compile_requests\":%" PRIu64 ",\"optimizing_compilations\":%" PRIu64 ","
+                   "\"optimizing_compile_failures\":%" PRIu64 ","
+                   "\"tier_up_requests\":%" PRIu64 ",\"tier_up_successes\":%" PRIu64 ","
+                   "\"region_compilations\":%" PRIu64 ",\"region_native_calls\":%" PRIu64 ","
+                   "\"region_compile_failures\":%" PRIu64 ",\"osr_backedges\":%" PRIu64 ","
+                   "\"osr_compile_requests\":%" PRIu64 ",\"osr_compilations\":%" PRIu64 ","
+                   "\"osr_compile_failures\":%" PRIu64 ",\"osr_frame_captures\":%" PRIu64 ","
+                   "\"osr_entries\":%" PRIu64 ",\"osr_bailouts\":%" PRIu64 ","
+                   "\"osr_negative_cache_hits\":%" PRIu64 ","
+                   "\"osr_rejections_unsupported\":%" PRIu64 ","
+                   "\"osr_rejections_allocation\":%" PRIu64 ","
+                   "\"osr_rejections_backend\":%" PRIu64 ","
+                   "\"osr_leaf_call_entries\":%" PRIu64 ","
+                   "\"osr_leaf_call_iterations\":%" PRIu64 ","
+                   "\"osr_int32_mix_entries\":%" PRIu64 ","
+                   "\"osr_int32_mix_iterations\":%" PRIu64 ","
+                   "\"holey_array_osr_entries\":%" PRIu64 ","
+                   "\"holey_array_osr_elements\":%" PRIu64 ","
+                   "\"typed_array_affine_sum_osr_entries\":%" PRIu64 ","
+                   "\"typed_array_affine_sum_osr_elements\":%" PRIu64 ","
+                   "\"object_array_osr_entries\":%" PRIu64 ","
+                   "\"object_array_osr_elements\":%" PRIu64 ","
+                   "\"object_array_polymorphic_osr_entries\":%" PRIu64 ","
+                   "\"object_array_update_osr_entries\":%" PRIu64 ","
+                   "\"object_array_grouped_osr_entries\":%" PRIu64 ","
+                   "\"object_array_grouped_osr_elements\":%" PRIu64 ","
+                   "\"osr_polymorphic_leaf_entries\":%" PRIu64 ","
+                   "\"osr_polymorphic_leaf_iterations\":%" PRIu64 ","
+                   "\"osr_closure_call_entries\":%" PRIu64 ","
+                   "\"osr_closure_call_iterations\":%" PRIu64 ","
+                   "\"osr_recursive_call_entries\":%" PRIu64 ","
+                   "\"osr_recursive_call_iterations\":%" PRIu64 ","
+                   "\"osr_coupled_float_entries\":%" PRIu64 ","
+                   "\"osr_coupled_float_iterations\":%" PRIu64 ","
+                   "\"deoptimizations\":%" PRIu64 ",\"cache_hits\":%" PRIu64 ","
+                   "\"cache_misses\":%" PRIu64 ",\"cache_compilations\":%" PRIu64 ","
+                   "\"cache_evictions\":%" PRIu64 ",\"cache_entries\":%zu,"
+                   "\"cache_native_code_bytes\":%zu}\n",
+                   optimization.baseline_threshold, optimization.optimizing_threshold,
+                   optimization.osr_threshold, optimization.enable_jit,
+                   optimization.enable_optimizing_jit, optimization.enable_osr,
+                   stats.interpreted_calls, stats.native_calls, native_ratio,
+                   stats.guard_failures, stats.baseline_compile_requests,
+                   stats.baseline_compilations, stats.baseline_compile_failures,
+                   stats.optimizing_compile_requests, stats.optimizing_compilations,
+                   stats.optimizing_compile_failures, stats.tier_up_requests,
+                   stats.tier_up_successes, stats.region_compilations,
+                   stats.region_native_calls, stats.region_compile_failures,
+                   stats.osr_backedges, stats.osr_compile_requests,
+                   stats.osr_compilations, stats.osr_compile_failures,
+                   stats.osr_frame_captures, stats.osr_entries,
+                   stats.osr_bailouts, stats.osr_negative_cache_hits,
+                   stats.osr_rejections_unsupported, stats.osr_rejections_allocation,
+                   stats.osr_rejections_backend, stats.osr_leaf_call_entries,
+                   stats.osr_leaf_call_iterations, stats.osr_int32_mix_entries,
+                   stats.osr_int32_mix_iterations, stats.holey_array_osr_entries,
+                   stats.holey_array_osr_elements,
+                   stats.typed_array_affine_sum_osr_entries,
+                   stats.typed_array_affine_sum_osr_elements,
+                   stats.object_array_osr_entries, stats.object_array_osr_elements,
+                   stats.object_array_polymorphic_osr_entries,
+                   stats.object_array_update_osr_entries,
+                   stats.object_array_grouped_osr_entries,
+                   stats.object_array_grouped_osr_elements,
+                   stats.osr_polymorphic_leaf_entries,
+                   stats.osr_polymorphic_leaf_iterations,
+                   stats.osr_closure_call_entries,
+                   stats.osr_closure_call_iterations,
+                   stats.osr_recursive_call_entries,
+                   stats.osr_recursive_call_iterations,
+                   stats.osr_coupled_float_entries,
+                   stats.osr_coupled_float_iterations, stats.deoptimizations,
+                   stats.cache_hits, stats.cache_misses, stats.compilations,
+                   stats.evictions, stats.cache_entries, stats.native_code_bytes);
+        } else {
+            printf("\nTurboJS JIT statistics\n"
+                   "  policy: baseline=%u optimizing=%u osr=%u enabled=%u/%u/%u\n"
+                   "  calls: interpreted=%" PRIu64 " native=%" PRIu64 " native_ratio=%.2f%% guards=%" PRIu64 "\n"
+                   "  baseline: requests=%" PRIu64 " compiled=%" PRIu64 " failed=%" PRIu64 "\n"
+                   "  optimizing: requests=%" PRIu64 " compiled=%" PRIu64 " failed=%" PRIu64
+                   " tier_up=%" PRIu64 "/%" PRIu64 "\n"
+                   "  regions: compiled=%" PRIu64 " calls=%" PRIu64 " failed=%" PRIu64 "\n"
+                   "  osr: backedges=%" PRIu64 " requests=%" PRIu64 " compiled=%" PRIu64
+                   " failed=%" PRIu64 " captures=%" PRIu64 " entries=%" PRIu64 " bailouts=%" PRIu64 "\n"
+                   "  osr specialization: negative_cache=%" PRIu64 " rejected=%" PRIu64 "/%" PRIu64 "/%" PRIu64
+                   " leaf_calls=%" PRIu64 " iterations=%" PRIu64 " int32_mix=%" PRIu64 " iterations=%" PRIu64 "\n"
+                   "  collection osr: holey=%" PRIu64 "/%" PRIu64
+                   " typed_affine=%" PRIu64 "/%" PRIu64
+                   " object=%" PRIu64 "/%" PRIu64 " poly=%" PRIu64 " update=%" PRIu64
+                   " grouped=%" PRIu64 "/%" PRIu64 "\n"
+                   "  call osr: polymorphic=%" PRIu64 "/%" PRIu64
+                   " closures=%" PRIu64 "/%" PRIu64
+                   " recursive=%" PRIu64 "/%" PRIu64 "\n"
+                   "  deoptimizations=%" PRIu64 "\n"
+                   "  cache: hits=%" PRIu64 " misses=%" PRIu64 " compilations=%" PRIu64
+                   " evictions=%" PRIu64 " entries=%zu native_code=%zu bytes\n",
+                   optimization.baseline_threshold, optimization.optimizing_threshold,
+                   optimization.osr_threshold, optimization.enable_jit,
+                   optimization.enable_optimizing_jit, optimization.enable_osr,
+                   stats.interpreted_calls, stats.native_calls, native_ratio,
+                   stats.guard_failures, stats.baseline_compile_requests,
+                   stats.baseline_compilations, stats.baseline_compile_failures,
+                   stats.optimizing_compile_requests, stats.optimizing_compilations,
+                   stats.optimizing_compile_failures, stats.tier_up_requests,
+                   stats.tier_up_successes, stats.region_compilations,
+                   stats.region_native_calls, stats.region_compile_failures,
+                   stats.osr_backedges, stats.osr_compile_requests,
+                   stats.osr_compilations, stats.osr_compile_failures,
+                   stats.osr_frame_captures, stats.osr_entries,
+                   stats.osr_bailouts, stats.osr_negative_cache_hits,
+                   stats.osr_rejections_unsupported, stats.osr_rejections_allocation,
+                   stats.osr_rejections_backend, stats.osr_leaf_call_entries,
+                   stats.osr_leaf_call_iterations, stats.osr_int32_mix_entries,
+                   stats.osr_int32_mix_iterations, stats.holey_array_osr_entries,
+                   stats.holey_array_osr_elements,
+                   stats.typed_array_affine_sum_osr_entries,
+                   stats.typed_array_affine_sum_osr_elements,
+                   stats.object_array_osr_entries, stats.object_array_osr_elements,
+                   stats.object_array_polymorphic_osr_entries,
+                   stats.object_array_update_osr_entries,
+                   stats.object_array_grouped_osr_entries,
+                   stats.object_array_grouped_osr_elements,
+                   stats.osr_polymorphic_leaf_entries,
+                   stats.osr_polymorphic_leaf_iterations,
+                   stats.osr_closure_call_entries,
+                   stats.osr_closure_call_iterations,
+                   stats.osr_recursive_call_entries,
+                   stats.osr_recursive_call_iterations, stats.deoptimizations,
+                   stats.cache_hits, stats.cache_misses, stats.compilations,
+                   stats.evictions, stats.cache_entries, stats.native_code_bytes);
+        }
+    }
     if (dump_memory) {
         JSMemoryUsage stats;
         JS_ComputeMemoryUsage(rt, &stats);

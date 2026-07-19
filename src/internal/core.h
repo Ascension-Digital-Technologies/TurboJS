@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_CORE_H
-#define QJS_INTERNAL_CORE_H
+#ifndef TURBOJS_INTERNAL_CORE_H
+#define TURBOJS_INTERNAL_CORE_H
 
 /*
  * Ownership boundary: core subsystem.

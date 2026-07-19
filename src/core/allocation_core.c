@@ -208,9 +208,7 @@ size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr)
 /**
  * This used to be implemented as malloc + memset, but using calloc
  * yields better performance in initial, bursty allocations, something useful
- * for QuickJS.
- *
- * More information: https://github.com/quickjs-ng/quickjs/pull/519
+ * for burst-heavy runtime allocation patterns.
  */
 void *js_mallocz_rt(JSRuntime *rt, size_t size)
 {
@@ -478,7 +476,16 @@ JSRuntime *turbojs_internal_new_runtime2(const JSMallocFunctions *mf, void *opaq
     rt->malloc_state = ms;
     js_arena_init(rt);
     rt->malloc_gc_threshold = 256 * 1024;
-    rt->jit_compile_threshold = 100;
+    {
+        TurboJSOptimizationConfig optimization = TurboJS_DefaultOptimizationConfig();
+        rt->jit_compile_threshold = optimization.baseline_threshold;
+        rt->jit_optimizing_threshold = optimization.optimizing_threshold;
+        rt->jit_osr_threshold = optimization.osr_threshold;
+        rt->jit_enabled = optimization.enable_jit;
+        rt->jit_optimizing_enabled = optimization.enable_optimizing_jit;
+        rt->jit_osr_enabled = optimization.enable_osr;
+        rt->jit_profiling_enabled = optimization.enable_profiling;
+    }
 
     init_list_head(&rt->context_list);
     init_list_head(&rt->gc_obj_list);

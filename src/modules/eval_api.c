@@ -57,7 +57,7 @@ JSValue JS_EvalFunction(JSContext *ctx, JSValue fun_obj)
     return JS_EvalFunctionInternal(ctx, fun_obj, ctx->global_obj, NULL, NULL);
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 /* 'input' must be zero terminated i.e. input[input_len] = '\0'. */
 /* `export_name` and `input` may be pure ASCII or UTF-8 encoded */
@@ -175,7 +175,7 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
     return JS_EXCEPTION;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 
 /* the indirection is needed to make 'eval' optional */
 static JSValue JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,

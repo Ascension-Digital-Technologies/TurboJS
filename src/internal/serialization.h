@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_SERIALIZATION_H
-#define QJS_INTERNAL_SERIALIZATION_H
+#ifndef TURBOJS_INTERNAL_SERIALIZATION_H
+#define TURBOJS_INTERNAL_SERIALIZATION_H
 
 /*
  * Ownership boundary: serialization subsystem.

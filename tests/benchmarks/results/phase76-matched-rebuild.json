@@ -1,0 +1,36 @@
+{
+  "phase": 76,
+  "note": "Same-machine seven-run matched medians used for Phase 77 comparison.",
+  "workloads": {
+    "int_loop.js": {
+      "TurboJS": {
+        "median_ms": 579.150348
+      }
+    },
+    "float_loop.js": {
+      "TurboJS": {
+        "median_ms": 201.055383
+      }
+    },
+    "function_calls.js": {
+      "TurboJS": {
+        "median_ms": 328.544563
+      }
+    },
+    "object_props.js": {
+      "TurboJS": {
+        "median_ms": 374.348108
+      }
+    },
+    "dense_array.js": {
+      "TurboJS": {
+        "median_ms": 270.14026
+      }
+    },
+    "string_build.js": {
+      "TurboJS": {
+        "median_ms": 23.612671
+      }
+    }
+  }
+}

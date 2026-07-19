@@ -1,0 +1,32 @@
+{
+  "workload": "nested integer loop",
+  "turbojs": {
+    "engine": "TurboJS",
+    "clock": "monotonic_ns",
+    "runs": 15,
+    "warmups": 3,
+    "repetitions": 5,
+    "median_ns": 4641089,
+    "min_ns": 4303080,
+    "max_ns": 5455554,
+    "checksum": 2499997500000,
+    "jit": {
+      "region_compilations": 0,
+      "region_native_calls": 15,
+      "region_compile_failures": 0,
+      "native_code_bytes": 0
+    }
+  },
+  "node": {
+    "engine": "Node v22.16.0",
+    "clock": "hrtime_bigint_ns",
+    "runs": 15,
+    "warmups": 3,
+    "repetitions": 5,
+    "median_ns": 2960190,
+    "min_ns": 2894812,
+    "max_ns": 4337184,
+    "checksum": 2499997500000
+  },
+  "turbojs_over_node": 1.5678348349261364
+}

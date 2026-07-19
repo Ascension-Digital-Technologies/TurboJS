@@ -1,0 +1,293 @@
+{
+  "methodology": {
+    "suite": "tests/benchmarks/full_engine/full_engine_sustained.js",
+    "warmups_per_workload": 3,
+    "measured_runs_per_workload": 9,
+    "aggregation": "median per workload; unweighted geometric mean of TurboJS/Node ratios",
+    "notes": [
+      "same JavaScript source and checksums",
+      "single-process sustained measurements",
+      "separate cold startup and parse/compile process measurements",
+      "no narrow-path results included in aggregate"
+    ]
+  },
+  "environment": {
+    "os": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "python": "3.13.5",
+    "turbojs_version": "0.16.0-rc.5",
+    "node_version": "v22.16.0"
+  },
+  "sustained": {
+    "workloads": [
+      {
+        "workload": "integer_mix",
+        "repetitions": 20,
+        "turbojs_median_ms": 170.9469910003245,
+        "node_median_ms": 2.320121999999998,
+        "ratio": 73.68017328413103,
+        "checksum": -9420179160
+      },
+      {
+        "workload": "float_numeric",
+        "repetitions": 20,
+        "turbojs_median_ms": 14.14222399983555,
+        "node_median_ms": 2.25817099999999,
+        "ratio": 6.262689583665547,
+        "checksum": 51625.784266619055
+      },
+      {
+        "workload": "calls_monomorphic",
+        "repetitions": 10,
+        "turbojs_median_ms": 176.96837300015613,
+        "node_median_ms": 1.087067999999988,
+        "ratio": 162.79420698627695,
+        "checksum": -1284421440
+      },
+      {
+        "workload": "calls_polymorphic",
+        "repetitions": 20,
+        "turbojs_median_ms": 20.114808999933302,
+        "node_median_ms": 0.571635999999998,
+        "ratio": 35.188142454172535,
+        "checksum": -14713600960
+      },
+      {
+        "workload": "closures",
+        "repetitions": 15,
+        "turbojs_median_ms": 13.78077800013125,
+        "node_median_ms": 0.12768900000000372,
+        "ratio": 107.92455105867262,
+        "checksum": 270450000
+      },
+      {
+        "workload": "object_access",
+        "repetitions": 4,
+        "turbojs_median_ms": 38.56091299979016,
+        "node_median_ms": 0.6993339999999932,
+        "ratio": 55.13947984767012,
+        "checksum": 3742608000
+      },
+      {
+        "workload": "object_polymorphic",
+        "repetitions": 4,
+        "turbojs_median_ms": 18.863492999691516,
+        "node_median_ms": 0.7989220000000046,
+        "ratio": 23.611182317787478,
+        "checksum": 359940000
+      },
+      {
+        "workload": "dense_arrays",
+        "repetitions": 10,
+        "turbojs_median_ms": 45.20823400001973,
+        "node_median_ms": 0.6352400000000102,
+        "ratio": 71.16717146278414,
+        "checksum": 10799100000
+      },
+      {
+        "workload": "holey_arrays",
+        "repetitions": 20,
+        "turbojs_median_ms": 75.75586699973792,
+        "node_median_ms": 1.1108839999999987,
+        "ratio": 68.19421919816831,
+        "checksum": 1919520000
+      },
+      {
+        "workload": "typed_arrays",
+        "repetitions": 4,
+        "turbojs_median_ms": 178.67949700029567,
+        "node_median_ms": 3.11957000000001,
+        "ratio": 57.27696349185788,
+        "checksum": 10802377803.633003
+      },
+      {
+        "workload": "string_ops",
+        "repetitions": 20,
+        "turbojs_median_ms": 12.954154999926686,
+        "node_median_ms": 1.2090689999999995,
+        "ratio": 10.71415692564005,
+        "checksum": 352320
+      },
+      {
+        "workload": "json_ops",
+        "repetitions": 1,
+        "turbojs_median_ms": 33.065218000207096,
+        "node_median_ms": 5.873880999999983,
+        "ratio": 5.6291943946782705,
+        "checksum": 597295
+      },
+      {
+        "workload": "regexp_ops",
+        "repetitions": 4,
+        "turbojs_median_ms": 9.59813000028953,
+        "node_median_ms": 1.587288000000001,
+        "ratio": 6.046873661420942,
+        "checksum": 300000
+      },
+      {
+        "workload": "array_sort",
+        "repetitions": 3,
+        "turbojs_median_ms": 8.637538999784738,
+        "node_median_ms": 3.157831999999985,
+        "ratio": 2.7352750240623247,
+        "checksum": -1811505
+      },
+      {
+        "workload": "exceptions",
+        "repetitions": 8,
+        "turbojs_median_ms": 13.311263000126928,
+        "node_median_ms": 2.021631999999954,
+        "ratio": 6.584414473122324,
+        "checksum": 671104
+      },
+      {
+        "workload": "recursion",
+        "repetitions": 1,
+        "turbojs_median_ms": 220.54228600021452,
+        "node_median_ms": 15.431941999999935,
+        "ratio": 14.291285309406648,
+        "checksum": 1014750
+      },
+      {
+        "workload": "allocation_gc_pressure",
+        "repetitions": 2,
+        "turbojs_median_ms": 9.524721999652684,
+        "node_median_ms": 0.9171270000000504,
+        "ratio": 10.385390463536849,
+        "checksum": 32000
+      },
+      {
+        "workload": "mini_application",
+        "repetitions": 4,
+        "turbojs_median_ms": 42.78866699989885,
+        "node_median_ms": 2.1120149999999285,
+        "ratio": 20.259641621816275,
+        "checksum": 95907696
+      }
+    ],
+    "geometric_mean_ratio": 22.414244523265435,
+    "median_ratio": 21.935411969801876,
+    "turbojs_total_of_medians_ms": 1103.4431590000167,
+    "node_total_of_medians_ms": 45.03942199999983
+  },
+  "cold_process": {
+    "empty": {
+      "TurboJS": {
+        "median_ms": 9.003691,
+        "mean_ms": 8.89085638095238,
+        "min_ms": 6.63399,
+        "max_ms": 12.276904,
+        "runs_ms": [
+          7.214109,
+          6.926803,
+          7.824377,
+          8.133143,
+          12.276904,
+          9.35389,
+          10.103629,
+          10.007391,
+          9.89137,
+          9.648685,
+          9.39148,
+          8.71192,
+          9.003691,
+          9.13418,
+          8.878266,
+          9.409533,
+          9.649527,
+          8.754012,
+          8.950528,
+          6.63399,
+          6.810556
+        ],
+        "output": ""
+      },
+      "Node/V8": {
+        "median_ms": 57.67409,
+        "mean_ms": 57.344332333333334,
+        "min_ms": 54.448688,
+        "max_ms": 61.417749,
+        "runs_ms": [
+          58.398032,
+          55.370567,
+          55.2573,
+          54.448688,
+          55.477305,
+          57.67409,
+          57.258565,
+          54.576627,
+          55.773623,
+          59.368021,
+          54.800794,
+          60.177734,
+          58.919077,
+          58.378693,
+          58.344862,
+          58.289155,
+          58.333891,
+          56.845964,
+          61.417749,
+          58.167725,
+          56.952517
+        ],
+        "output": ""
+      },
+      "ratio": 0.15611327374216047
+    },
+    "parse_compile": {
+      "TurboJS": {
+        "median_ms": 72.446661,
+        "mean_ms": 72.7282624,
+        "min_ms": 70.143809,
+        "max_ms": 76.225552,
+        "runs_ms": [
+          73.198878,
+          73.466965,
+          76.225552,
+          72.767601,
+          72.446661,
+          74.316202,
+          75.731697,
+          72.176436,
+          71.033115,
+          71.572483,
+          70.464203,
+          70.143809,
+          72.172681,
+          71.339984,
+          73.867669
+        ],
+        "output": "2829168"
+      },
+      "Node/V8": {
+        "median_ms": 73.637375,
+        "mean_ms": 73.68446753333333,
+        "min_ms": 70.374105,
+        "max_ms": 75.623037,
+        "runs_ms": [
+          72.782318,
+          73.095616,
+          70.374105,
+          74.445654,
+          75.309446,
+          73.696606,
+          74.329351,
+          73.583332,
+          73.067536,
+          73.637375,
+          73.921585,
+          75.623037,
+          73.275675,
+          74.998363,
+          73.127014
+        ],
+        "output": "2829168"
+      },
+      "ratio": 0.9838300319640672
+    }
+  },
+  "binary_size_bytes": {
+    "TurboJS": 1658528,
+    "Node/V8": 121509208
+  }
+}

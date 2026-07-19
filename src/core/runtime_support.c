@@ -141,6 +141,10 @@ void turbojs_internal_free_runtime(JSRuntime *rt)
         TurboJS_CodeCacheDestroy((TurboJSCodeCache *)rt->jit_code_cache);
         rt->jit_code_cache = NULL;
     }
+    if (rt->jit_float_code_cache) {
+        TurboJS_CodeCacheDestroy((TurboJSCodeCache *)rt->jit_float_code_cache);
+        rt->jit_float_code_cache = NULL;
+    }
     JS_FreeValueRT(rt, rt->current_exception);
 
     list_for_each_safe(el, el1, &rt->job_list) {
@@ -641,8 +645,62 @@ static inline bool is_strict_mode(JSContext *ctx)
 
 void turbojs_internal_set_jit_threshold(JSRuntime *rt, uint32_t threshold)
 {
-    if (rt)
-        rt->jit_compile_threshold = threshold ? threshold : 1;
+    uint32_t value;
+    if (!rt)
+        return;
+    value = threshold ? threshold : 1;
+    rt->jit_compile_threshold = value;
+    if (rt->jit_optimizing_threshold < value)
+        rt->jit_optimizing_threshold = value;
+    if (rt->jit_osr_threshold < value)
+        rt->jit_osr_threshold = value;
+}
+
+void turbojs_internal_set_optimization_config(
+    JSRuntime *rt, const TurboJSOptimizationConfig *config)
+{
+    TurboJSOptimizationConfig value;
+    if (!rt)
+        return;
+    value = config ? *config : TurboJS_DefaultOptimizationConfig();
+    if (!value.baseline_threshold)
+        value.baseline_threshold = 1;
+    if (value.optimizing_threshold < value.baseline_threshold)
+        value.optimizing_threshold = value.baseline_threshold;
+    if (!value.osr_threshold)
+        value.osr_threshold = 1;
+#ifndef TURBOJS_ENABLE_OPTIMIZING_JIT
+    value.enable_optimizing_jit = 0;
+    value.enable_osr = 0;
+#endif
+    if (!value.enable_jit) {
+        value.enable_optimizing_jit = 0;
+        value.enable_osr = 0;
+    } else if (!value.enable_optimizing_jit) {
+        value.enable_osr = 0;
+    }
+    rt->jit_compile_threshold = value.baseline_threshold;
+    rt->jit_optimizing_threshold = value.optimizing_threshold;
+    rt->jit_osr_threshold = value.osr_threshold;
+    rt->jit_enabled = value.enable_jit != 0;
+    rt->jit_optimizing_enabled = value.enable_optimizing_jit != 0;
+    rt->jit_osr_enabled = value.enable_osr != 0;
+    rt->jit_profiling_enabled = value.enable_profiling != 0;
+}
+
+TurboJSOptimizationConfig turbojs_internal_get_optimization_config(const JSRuntime *rt)
+{
+    TurboJSOptimizationConfig value = TurboJS_DefaultOptimizationConfig();
+    if (!rt)
+        return value;
+    value.baseline_threshold = rt->jit_compile_threshold;
+    value.optimizing_threshold = rt->jit_optimizing_threshold;
+    value.osr_threshold = rt->jit_osr_threshold;
+    value.enable_jit = rt->jit_enabled;
+    value.enable_optimizing_jit = rt->jit_optimizing_enabled;
+    value.enable_osr = rt->jit_osr_enabled;
+    value.enable_profiling = rt->jit_profiling_enabled;
+    return value;
 }
 
 TurboJSRuntimeJITStats turbojs_internal_get_jit_stats(const JSRuntime *rt)
@@ -655,6 +713,92 @@ TurboJSRuntimeJITStats turbojs_internal_get_jit_stats(const JSRuntime *rt)
     out.interpreted_calls = rt->jit_interpreted_calls;
     out.native_calls = rt->jit_native_calls;
     out.guard_failures = rt->jit_guard_failures;
+    out.baseline_compile_requests = rt->baseline_compile_requests;
+    out.baseline_compilations = rt->baseline_compilations;
+    out.baseline_compile_failures = rt->baseline_compile_failures;
+    out.optimizing_compile_requests = rt->optimizing_compile_requests;
+    out.optimizing_compilations = rt->optimizing_compilations;
+    out.optimizing_compile_failures = rt->optimizing_compile_failures;
+    out.tier_up_requests = rt->tier_up_requests;
+    out.tier_up_successes = rt->tier_up_successes;
+    out.deoptimizations = rt->deoptimizations;
+    out.region_compilations = rt->region_compilations;
+    out.region_native_calls = rt->region_native_calls;
+    out.region_compile_failures = rt->region_compile_failures;
+    out.property_ic_hits = rt->property_ic_hits;
+    out.property_ic_misses = rt->property_ic_misses;
+    out.property_ic_fills = rt->property_ic_fills;
+    out.call_feedback_observations = rt->call_feedback_observations;
+    out.call_feedback_monomorphic = rt->call_feedback_monomorphic;
+    out.call_feedback_polymorphic = rt->call_feedback_polymorphic;
+    out.call_feedback_megamorphic = rt->call_feedback_megamorphic;
+    out.call_feedback_transitions = rt->call_feedback_transitions;
+    out.relay_call_hits = rt->relay_call_hits;
+    out.relay_call_misses = rt->relay_call_misses;
+    out.relay_call_installs = rt->relay_call_installs;
+    out.relay_call_invalidations = rt->relay_call_invalidations;
+    out.relay_spool_hits = rt->relay_spool_hits;
+    out.relay_spool_misses = rt->relay_spool_misses;
+    out.relay_spool_installs = rt->relay_spool_installs;
+    out.relay_spool_invalidations = rt->relay_spool_invalidations;
+    out.relay_spool_feedback_installs = rt->relay_spool_feedback_installs;
+    out.relay_spool_feedback_rejections = rt->relay_spool_feedback_rejections;
+    out.relay_spool_stale_bailouts = rt->relay_spool_stale_bailouts;
+    out.relay_spool_callee_bailouts = rt->relay_spool_callee_bailouts;
+    out.spool_call_lowering_resolved = rt->spool_call_lowering_resolved;
+    out.spool_call_lowering_rejected = rt->spool_call_lowering_rejected;
+    out.dense_array_load_hits = rt->dense_array_load_hits;
+    out.dense_array_store_hits = rt->dense_array_store_hits;
+    out.dense_array_slow_paths = rt->dense_array_slow_paths;
+    out.dense_array_osr_entries = rt->dense_array_osr_entries;
+    out.dense_array_osr_elements = rt->dense_array_osr_elements;
+    out.dense_array_osr_unrolled_blocks = rt->dense_array_osr_unrolled_blocks;
+    out.dense_array_osr_multi_lane_blocks = rt->dense_array_osr_multi_lane_blocks;
+    out.dense_array_osr_float_promotions = rt->dense_array_osr_float_promotions;
+    out.dense_array_transform_osr_entries = rt->dense_array_transform_osr_entries;
+    out.dense_array_transform_osr_elements = rt->dense_array_transform_osr_elements;
+    out.dense_array_inplace_osr_entries = rt->dense_array_inplace_osr_entries;
+    out.dense_array_binary_osr_entries = rt->dense_array_binary_osr_entries;
+    out.dense_array_copy_osr_entries = rt->dense_array_copy_osr_entries;
+    out.dense_array_fill_osr_entries = rt->dense_array_fill_osr_entries;
+    out.typed_array_osr_entries = rt->typed_array_osr_entries;
+    out.typed_array_osr_elements = rt->typed_array_osr_elements;
+    out.typed_array_simd_elements = rt->typed_array_simd_elements;
+    out.typed_array_simd_sse2_entries = rt->typed_array_simd_sse2_entries;
+    out.typed_array_simd_avx2_entries = rt->typed_array_simd_avx2_entries;
+    out.holey_array_osr_entries = rt->holey_array_osr_entries;
+    out.holey_array_osr_elements = rt->holey_array_osr_elements;
+    out.typed_array_affine_sum_osr_entries = rt->typed_array_affine_sum_osr_entries;
+    out.typed_array_affine_sum_osr_elements = rt->typed_array_affine_sum_osr_elements;
+    out.object_array_osr_entries = rt->object_array_osr_entries;
+    out.object_array_osr_elements = rt->object_array_osr_elements;
+    out.object_array_polymorphic_osr_entries = rt->object_array_polymorphic_osr_entries;
+    out.object_array_update_osr_entries = rt->object_array_update_osr_entries;
+    out.object_array_grouped_osr_entries = rt->object_array_grouped_osr_entries;
+    out.object_array_grouped_osr_elements = rt->object_array_grouped_osr_elements;
+    out.osr_backedges = rt->osr_backedges;
+    out.osr_compile_requests = rt->osr_compile_requests;
+    out.osr_compilations = rt->osr_compilations;
+    out.osr_compile_failures = rt->osr_compile_failures;
+    out.osr_frame_captures = rt->osr_frame_captures;
+    out.osr_entries = rt->osr_entries;
+    out.osr_bailouts = rt->osr_bailouts;
+    out.osr_negative_cache_hits = rt->osr_negative_cache_hits;
+    out.osr_rejections_unsupported = rt->osr_rejections_unsupported;
+    out.osr_rejections_allocation = rt->osr_rejections_allocation;
+    out.osr_rejections_backend = rt->osr_rejections_backend;
+    out.osr_leaf_call_entries = rt->osr_leaf_call_entries;
+    out.osr_leaf_call_iterations = rt->osr_leaf_call_iterations;
+    out.osr_int32_mix_entries = rt->osr_int32_mix_entries;
+    out.osr_int32_mix_iterations = rt->osr_int32_mix_iterations;
+    out.osr_polymorphic_leaf_entries = rt->osr_polymorphic_leaf_entries;
+    out.osr_polymorphic_leaf_iterations = rt->osr_polymorphic_leaf_iterations;
+    out.osr_closure_call_entries = rt->osr_closure_call_entries;
+    out.osr_closure_call_iterations = rt->osr_closure_call_iterations;
+    out.osr_recursive_call_entries = rt->osr_recursive_call_entries;
+    out.osr_recursive_call_iterations = rt->osr_recursive_call_iterations;
+    out.osr_coupled_float_entries = rt->osr_coupled_float_entries;
+    out.osr_coupled_float_iterations = rt->osr_coupled_float_iterations;
     if (rt->jit_code_cache) {
         cache_stats = TurboJS_CodeCacheGetStats((const TurboJSCodeCache *)rt->jit_code_cache);
         out.cache_hits = cache_stats.hits;
@@ -664,11 +808,119 @@ TurboJSRuntimeJITStats turbojs_internal_get_jit_stats(const JSRuntime *rt)
         out.cache_entries = cache_stats.entry_count;
         out.native_code_bytes = cache_stats.code_bytes;
     }
+    if (rt->jit_float_code_cache) {
+        cache_stats = TurboJS_CodeCacheGetStats((const TurboJSCodeCache *)rt->jit_float_code_cache);
+        out.cache_hits += cache_stats.hits;
+        out.cache_misses += cache_stats.misses;
+        out.compilations += cache_stats.compilations;
+        out.evictions += cache_stats.evictions;
+        out.cache_entries += cache_stats.entry_count;
+        out.native_code_bytes += cache_stats.code_bytes;
+    }
     return out;
+}
+
+void turbojs_internal_reset_jit_stats(JSRuntime *rt)
+{
+    if (!rt)
+        return;
+#define TURBOJS_RESET_COUNTER(name) rt->name = 0
+    TURBOJS_RESET_COUNTER(jit_interpreted_calls);
+    TURBOJS_RESET_COUNTER(jit_native_calls);
+    TURBOJS_RESET_COUNTER(jit_guard_failures);
+    TURBOJS_RESET_COUNTER(baseline_compile_requests);
+    TURBOJS_RESET_COUNTER(baseline_compilations);
+    TURBOJS_RESET_COUNTER(baseline_compile_failures);
+    TURBOJS_RESET_COUNTER(optimizing_compile_requests);
+    TURBOJS_RESET_COUNTER(optimizing_compilations);
+    TURBOJS_RESET_COUNTER(optimizing_compile_failures);
+    TURBOJS_RESET_COUNTER(tier_up_requests);
+    TURBOJS_RESET_COUNTER(tier_up_successes);
+    TURBOJS_RESET_COUNTER(deoptimizations);
+    TURBOJS_RESET_COUNTER(region_compilations);
+    TURBOJS_RESET_COUNTER(region_native_calls);
+    TURBOJS_RESET_COUNTER(region_compile_failures);
+    TURBOJS_RESET_COUNTER(property_ic_hits);
+    TURBOJS_RESET_COUNTER(property_ic_misses);
+    TURBOJS_RESET_COUNTER(property_ic_fills);
+    TURBOJS_RESET_COUNTER(call_feedback_observations);
+    TURBOJS_RESET_COUNTER(call_feedback_monomorphic);
+    TURBOJS_RESET_COUNTER(call_feedback_polymorphic);
+    TURBOJS_RESET_COUNTER(call_feedback_megamorphic);
+    TURBOJS_RESET_COUNTER(call_feedback_transitions);
+    TURBOJS_RESET_COUNTER(relay_call_hits);
+    TURBOJS_RESET_COUNTER(relay_call_misses);
+    TURBOJS_RESET_COUNTER(relay_call_installs);
+    TURBOJS_RESET_COUNTER(relay_call_invalidations);
+    TURBOJS_RESET_COUNTER(relay_spool_hits);
+    TURBOJS_RESET_COUNTER(relay_spool_misses);
+    TURBOJS_RESET_COUNTER(relay_spool_installs);
+    TURBOJS_RESET_COUNTER(relay_spool_invalidations);
+    TURBOJS_RESET_COUNTER(relay_spool_feedback_installs);
+    TURBOJS_RESET_COUNTER(relay_spool_feedback_rejections);
+    TURBOJS_RESET_COUNTER(relay_spool_stale_bailouts);
+    TURBOJS_RESET_COUNTER(relay_spool_callee_bailouts);
+    TURBOJS_RESET_COUNTER(spool_call_lowering_resolved);
+    TURBOJS_RESET_COUNTER(spool_call_lowering_rejected);
+    TURBOJS_RESET_COUNTER(dense_array_load_hits);
+    TURBOJS_RESET_COUNTER(dense_array_store_hits);
+    TURBOJS_RESET_COUNTER(dense_array_slow_paths);
+    TURBOJS_RESET_COUNTER(dense_array_osr_entries);
+    TURBOJS_RESET_COUNTER(dense_array_osr_elements);
+    TURBOJS_RESET_COUNTER(dense_array_osr_unrolled_blocks);
+    TURBOJS_RESET_COUNTER(dense_array_osr_multi_lane_blocks);
+    TURBOJS_RESET_COUNTER(dense_array_osr_float_promotions);
+    TURBOJS_RESET_COUNTER(dense_array_transform_osr_entries);
+    TURBOJS_RESET_COUNTER(dense_array_transform_osr_elements);
+    TURBOJS_RESET_COUNTER(dense_array_inplace_osr_entries);
+    TURBOJS_RESET_COUNTER(dense_array_binary_osr_entries);
+    TURBOJS_RESET_COUNTER(dense_array_copy_osr_entries);
+    TURBOJS_RESET_COUNTER(dense_array_fill_osr_entries);
+    TURBOJS_RESET_COUNTER(typed_array_osr_entries);
+    TURBOJS_RESET_COUNTER(typed_array_osr_elements);
+    TURBOJS_RESET_COUNTER(typed_array_simd_elements);
+    TURBOJS_RESET_COUNTER(typed_array_simd_sse2_entries);
+    TURBOJS_RESET_COUNTER(typed_array_simd_avx2_entries);
+    TURBOJS_RESET_COUNTER(holey_array_osr_entries);
+    TURBOJS_RESET_COUNTER(holey_array_osr_elements);
+    TURBOJS_RESET_COUNTER(typed_array_affine_sum_osr_entries);
+    TURBOJS_RESET_COUNTER(typed_array_affine_sum_osr_elements);
+    TURBOJS_RESET_COUNTER(object_array_osr_entries);
+    TURBOJS_RESET_COUNTER(object_array_osr_elements);
+    TURBOJS_RESET_COUNTER(object_array_polymorphic_osr_entries);
+    TURBOJS_RESET_COUNTER(object_array_update_osr_entries);
+    TURBOJS_RESET_COUNTER(object_array_grouped_osr_entries);
+    TURBOJS_RESET_COUNTER(object_array_grouped_osr_elements);
+    TURBOJS_RESET_COUNTER(osr_backedges);
+    TURBOJS_RESET_COUNTER(osr_compile_requests);
+    TURBOJS_RESET_COUNTER(osr_compilations);
+    TURBOJS_RESET_COUNTER(osr_compile_failures);
+    TURBOJS_RESET_COUNTER(osr_frame_captures);
+    TURBOJS_RESET_COUNTER(osr_entries);
+    TURBOJS_RESET_COUNTER(osr_bailouts);
+    TURBOJS_RESET_COUNTER(osr_negative_cache_hits);
+    TURBOJS_RESET_COUNTER(osr_rejections_unsupported);
+    TURBOJS_RESET_COUNTER(osr_rejections_allocation);
+    TURBOJS_RESET_COUNTER(osr_rejections_backend);
+    TURBOJS_RESET_COUNTER(osr_leaf_call_entries);
+    TURBOJS_RESET_COUNTER(osr_leaf_call_iterations);
+    TURBOJS_RESET_COUNTER(osr_int32_mix_entries);
+    TURBOJS_RESET_COUNTER(osr_int32_mix_iterations);
+    TURBOJS_RESET_COUNTER(osr_polymorphic_leaf_entries);
+    TURBOJS_RESET_COUNTER(osr_polymorphic_leaf_iterations);
+    TURBOJS_RESET_COUNTER(osr_closure_call_entries);
+    TURBOJS_RESET_COUNTER(osr_closure_call_iterations);
+    TURBOJS_RESET_COUNTER(osr_recursive_call_entries);
+    TURBOJS_RESET_COUNTER(osr_recursive_call_iterations);
+    TURBOJS_RESET_COUNTER(osr_coupled_float_entries);
+    TURBOJS_RESET_COUNTER(osr_coupled_float_iterations);
+#undef TURBOJS_RESET_COUNTER
 }
 
 void turbojs_internal_clear_jit_cache(JSRuntime *rt)
 {
     if (rt && rt->jit_code_cache)
         TurboJS_CodeCacheClear((TurboJSCodeCache *)rt->jit_code_cache);
+    if (rt && rt->jit_float_code_cache)
+        TurboJS_CodeCacheClear((TurboJSCodeCache *)rt->jit_float_code_cache);
 }

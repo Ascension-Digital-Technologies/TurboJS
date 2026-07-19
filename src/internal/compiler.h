@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_COMPILER_H
-#define QJS_INTERNAL_COMPILER_H
+#ifndef TURBOJS_INTERNAL_COMPILER_H
+#define TURBOJS_INTERNAL_COMPILER_H
 
 /*
  * Ownership boundary: compiler subsystem.

@@ -1,0 +1,11 @@
+{
+  "phase": 70,
+  "workload": "nested integer loop",
+  "turbojs": {"median_ns": 4186716, "min_ns": 4182221, "max_ns": 4297046, "checksum": 2499997500000},
+  "node": {"version": "22.16.0", "median_ns": 2921495, "min_ns": 2822659, "max_ns": 3126199, "checksum": 2499997500000},
+  "turbojs_over_node": 1.4330731355008308,
+  "allocation_regression": {
+    "phase69": {"edge_moves": 2, "native_code_bytes": 142},
+    "phase70": {"edge_moves": 1, "native_code_bytes": 139, "coalesce_candidates": 2, "coalesce_successes": 1, "coalesce_rejected": 1}
+  }
+}

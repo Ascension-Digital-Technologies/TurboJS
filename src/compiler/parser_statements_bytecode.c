@@ -46,7 +46,7 @@ static JSExportEntry *add_export_entry2(JSContext *ctx,
     return me;
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 static JSExportEntry *add_export_entry(JSParseState *s, JSModuleDef *m,
                                        JSAtom local_name, JSAtom export_name,
@@ -71,5 +71,5 @@ static int add_star_export_entry(JSContext *ctx, JSModuleDef *m,
     return 0;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 

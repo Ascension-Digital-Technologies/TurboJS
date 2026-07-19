@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: TurboJS
+Description: Embeddable JavaScript engine with interpreter, JIT, and portable AOT infrastructure
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lturbojs
+Cflags: -I${includedir}/turbojs

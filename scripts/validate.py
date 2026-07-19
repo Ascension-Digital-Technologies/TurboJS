@@ -20,18 +20,29 @@ def main() -> int:
         raise RuntimeError("Python script syntax validation failed")
 
     validator = ROOT / "tools" / "validation" / "check_architecture.py"
+    legacy_validator = ROOT / "tools" / "validation" / "check_legacy_identity.py"
     if validator.exists():
         run([sys.executable, validator])
+    if legacy_validator.exists():
+        run([sys.executable, legacy_validator])
 
     build_dir = ensure_configured(args.preset)
     if not args.skip_build:
         run([cmake(), "--build", "--preset", args.preset])
     run([ctest(), "--preset", args.preset, "--output-on-failure"])
 
-    forbidden = [ROOT / "include", ROOT / "src" / "compat"]
+    forbidden = [
+        ROOT / "src" / "compat",
+        ROOT / "src" / "generated",
+        ROOT / "src" / "cli",
+        ROOT / "src" / "engine.c",
+        ROOT / "benchmark-results",
+        ROOT / "ROADMAP.md",
+        ROOT / "RELEASE_STATUS.md",
+    ]
     existing = [str(path.relative_to(ROOT)) for path in forbidden if path.exists()]
     if existing:
-        raise RuntimeError("removed source directories reappeared: " + ", ".join(existing))
+        raise RuntimeError("obsolete repository paths reappeared: " + ", ".join(existing))
 
     print(f"validation complete: {build_dir}")
     return 0

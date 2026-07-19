@@ -501,7 +501,7 @@ int JS_PRINTF_FORMAT_ATTR(2, 3) js_parse_error(JSParseState *s, JS_PRINTF_FORMAT
     return -1;
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 static __exception int next_token(JSParseState *s);
 
@@ -866,7 +866,7 @@ static __exception int js_parse_regexp(JSParseState *s)
     return -1;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 
 static __exception int ident_realloc(JSContext *ctx, char **pbuf, size_t *psize,
                                      char *static_buf)
@@ -895,7 +895,7 @@ static __exception int ident_realloc(JSContext *ctx, char **pbuf, size_t *psize,
     return 0;
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 /* convert a TOK_IDENT to a keyword when needed */
 static void update_token_ident(JSParseState *s)
@@ -1457,7 +1457,7 @@ static __exception int next_token(JSParseState *s)
     return -1;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 
 static int json_parse_error(JSParseState *s, const uint8_t *curp, const char *msg)
 {

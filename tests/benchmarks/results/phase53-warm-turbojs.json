@@ -1,0 +1,30 @@
+{
+  "engine": "build/phase53/turbojs",
+  "source": "tests/benchmarks/js/warm_int_loop.js",
+  "iterations": 5,
+  "warmup": 2,
+  "runs": 5,
+  "warm_ms": {
+    "median": 183.0,
+    "min": 182.0,
+    "max": 183.0,
+    "samples": [
+      183.0,
+      183.0,
+      182.0,
+      182.0,
+      183.0
+    ]
+  },
+  "process_ms": {
+    "median": 558.8950990004378,
+    "samples": [
+      569.5726049998484,
+      559.4348340000579,
+      556.7553479995695,
+      558.8950990004378,
+      558.3026999993308
+    ]
+  },
+  "checksum": "2499997500000"
+}

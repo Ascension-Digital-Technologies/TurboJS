@@ -30,7 +30,7 @@ int main(void)
     TurboJSTieredFunction tiered;
     TurboJSTieredResult route;
     TurboJSCodeCacheStats stats;
-    int key;
+    int key = 0;
     int64_t args[2] = {20, 22};
     int64_t result;
 

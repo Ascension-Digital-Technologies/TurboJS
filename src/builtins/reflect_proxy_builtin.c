@@ -247,14 +247,48 @@ static JSValue js_json_rawJSON(JSContext *ctx, JSValueConst this_val,
     return JS_EXCEPTION;
 }
 
+#define JSON_INDEX_KEY_CACHE_SIZE 128
+
 typedef struct JSONStringifyContext {
     JSValueConst replacer_func;
-    JSValue stack;
     JSValue property_list;
     JSValue gap;
     JSValue empty;
     StringBuffer *b;
+    JSObject **object_stack;
+    uint32_t object_stack_len;
+    uint32_t object_stack_cap;
+    JSValue index_key_cache[JSON_INDEX_KEY_CACHE_SIZE];
 } JSONStringifyContext;
+
+static int json_object_stack_contains(const JSONStringifyContext *jsc, const JSObject *object)
+{
+    uint32_t i;
+    for (i = 0; i < jsc->object_stack_len; i++) {
+        if (jsc->object_stack[i] == object)
+            return 1;
+    }
+    return 0;
+}
+
+static int json_object_stack_push(JSContext *ctx, JSONStringifyContext *jsc, JSObject *object)
+{
+    JSObject **new_stack;
+    uint32_t new_cap;
+    if (jsc->object_stack_len == jsc->object_stack_cap) {
+        new_cap = jsc->object_stack_cap ? jsc->object_stack_cap * 2 : 16;
+        new_stack = js_realloc_rt(ctx->rt, jsc->object_stack,
+                                  sizeof(*new_stack) * new_cap);
+        if (!new_stack) {
+            JS_ThrowOutOfMemory(ctx);
+            return -1;
+        }
+        jsc->object_stack = new_stack;
+        jsc->object_stack_cap = new_cap;
+    }
+    jsc->object_stack[jsc->object_stack_len++] = object;
+    return 0;
+}
 
 static JSValue JS_ToQuotedStringFree(JSContext *ctx, JSValue val) {
     JSValue r = JS_ToQuotedString(ctx, val);
@@ -325,15 +359,20 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
 {
     JSValue indent1, sep, sep1, tab, v, prop;
     JSObject *p;
+    JSPropertyEnum *native_props;
+    uint32_t native_prop_count;
     int64_t i, len;
     int cl, ret;
-    bool has_content;
+    bool has_content, use_native_props;
 
     indent1 = JS_UNDEFINED;
     sep = JS_UNDEFINED;
     sep1 = JS_UNDEFINED;
     tab = JS_UNDEFINED;
     prop = JS_UNDEFINED;
+    native_props = NULL;
+    native_prop_count = 0;
+    use_native_props = false;
 
     if (js_check_stack_overflow(ctx->rt, 0)) {
         JS_ThrowStackOverflow(ctx);
@@ -365,10 +404,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
             val = val1;
             goto concat_value;
         }
-        v = js_array_includes(ctx, jsc->stack, 1, vc(&val));
-        if (JS_IsException(v))
-            goto exception;
-        if (JS_ToBoolFree(ctx, v)) {
+        if (json_object_stack_contains(jsc, p)) {
             JS_ThrowTypeError(ctx, "circular reference");
             goto exception;
         }
@@ -386,8 +422,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
             sep = js_dup(jsc->empty);
             sep1 = js_dup(jsc->empty);
         }
-        v = js_array_push(ctx, jsc->stack, 1, vc(&val), 0);
-        if (check_exception_free(ctx, v))
+        if (json_object_stack_push(ctx, jsc, p))
             goto exception;
         ret = js_is_array(ctx, val);
         if (ret < 0)
@@ -403,10 +438,18 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
                 v = JS_GetPropertyInt64(ctx, val, i);
                 if (JS_IsException(v))
                     goto exception;
-                /* XXX: could do this string conversion only when needed */
-                prop = JS_ToStringFree(ctx, js_int64(i));
-                if (JS_IsException(prop))
-                    goto exception;
+                if ((uint64_t)i < JSON_INDEX_KEY_CACHE_SIZE) {
+                    if (JS_IsUndefined(jsc->index_key_cache[i])) {
+                        jsc->index_key_cache[i] = JS_ToStringFree(ctx, js_int64(i));
+                        if (JS_IsException(jsc->index_key_cache[i]))
+                            goto exception;
+                    }
+                    prop = js_dup(jsc->index_key_cache[i]);
+                } else {
+                    prop = JS_ToStringFree(ctx, js_int64(i));
+                    if (JS_IsException(prop))
+                        goto exception;
+                }
                 v = js_json_check(ctx, jsc, val, v, prop);
                 JS_FreeValue(ctx, prop);
                 prop = JS_UNDEFINED;
@@ -423,23 +466,34 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
             }
             string_buffer_putc8(jsc->b, ']');
         } else {
-            if (!JS_IsUndefined(jsc->property_list))
+            if (!JS_IsUndefined(jsc->property_list)) {
                 tab = js_dup(jsc->property_list);
-            else
-                tab = js_object_keys(ctx, JS_UNDEFINED, 1, vc(&val),
-                                     JS_ITERATOR_KIND_KEY);
-            if (JS_IsException(tab))
-                goto exception;
-            if (js_get_length64(ctx, &len, tab))
-                goto exception;
+                if (JS_IsException(tab))
+                    goto exception;
+                if (js_get_length64(ctx, &len, tab))
+                    goto exception;
+            } else {
+                if (JS_GetOwnPropertyNames(ctx, &native_props, &native_prop_count,
+                                           val, JS_GPN_ENUM_ONLY | JS_GPN_STRING_MASK) < 0)
+                    goto exception;
+                len = native_prop_count;
+                use_native_props = true;
+            }
             string_buffer_putc8(jsc->b, '{');
             has_content = false;
             for(i = 0; i < len; i++) {
                 JS_FreeValue(ctx, prop);
-                prop = JS_GetPropertyInt64(ctx, tab, i);
-                if (JS_IsException(prop))
-                    goto exception;
-                v = JS_GetPropertyValue(ctx, val, js_dup(prop));
+                if (use_native_props) {
+                    prop = JS_AtomToString(ctx, native_props[i].atom);
+                    if (JS_IsException(prop))
+                        goto exception;
+                    v = JS_GetProperty(ctx, val, native_props[i].atom);
+                } else {
+                    prop = JS_GetPropertyInt64(ctx, tab, i);
+                    if (JS_IsException(prop))
+                        goto exception;
+                    v = JS_GetPropertyValue(ctx, val, js_dup(prop));
+                }
                 if (JS_IsException(v))
                     goto exception;
                 v = js_json_check(ctx, jsc, val, v, prop);
@@ -468,10 +522,11 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
             }
             string_buffer_putc8(jsc->b, '}');
         }
-        if (check_exception_free(ctx, js_array_pop(ctx, jsc->stack, 0, NULL, 0)))
-            goto exception;
+        assert(jsc->object_stack_len > 0);
+        jsc->object_stack_len--;
         JS_FreeValue(ctx, val);
         JS_FreeValue(ctx, tab);
+        JS_FreePropertyEnum(ctx, native_props, native_prop_count);
         JS_FreeValue(ctx, sep);
         JS_FreeValue(ctx, sep1);
         JS_FreeValue(ctx, indent1);
@@ -508,6 +563,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
 exception:
     JS_FreeValue(ctx, val);
     JS_FreeValue(ctx, tab);
+    JS_FreePropertyEnum(ctx, native_props, native_prop_count);
     JS_FreeValue(ctx, sep);
     JS_FreeValue(ctx, sep1);
     JS_FreeValue(ctx, indent1);
@@ -523,20 +579,22 @@ JSValue JS_JSONStringify(JSContext *ctx, JSValueConst obj,
     JSValue val, v, space, ret, wrapper;
     int res;
     int64_t i, j, n;
+    uint32_t cache_index;
 
     jsc->replacer_func = JS_UNDEFINED;
-    jsc->stack = JS_UNDEFINED;
     jsc->property_list = JS_UNDEFINED;
     jsc->gap = JS_UNDEFINED;
     jsc->b = &b_s;
+    jsc->object_stack = NULL;
+    jsc->object_stack_len = 0;
+    jsc->object_stack_cap = 0;
+    for (cache_index = 0; cache_index < JSON_INDEX_KEY_CACHE_SIZE; cache_index++)
+        jsc->index_key_cache[cache_index] = JS_UNDEFINED;
     jsc->empty = js_empty_string(ctx->rt);
     ret = JS_UNDEFINED;
     wrapper = JS_UNDEFINED;
 
     string_buffer_init(ctx, jsc->b, 0);
-    jsc->stack = JS_NewArray(ctx);
-    if (JS_IsException(jsc->stack))
-        goto exception;
     if (JS_IsFunction(ctx, replacer)) {
         jsc->replacer_func = replacer;
     } else {
@@ -645,7 +703,9 @@ done:
     JS_FreeValue(ctx, jsc->empty);
     JS_FreeValue(ctx, jsc->gap);
     JS_FreeValue(ctx, jsc->property_list);
-    JS_FreeValue(ctx, jsc->stack);
+    for (cache_index = 0; cache_index < JSON_INDEX_KEY_CACHE_SIZE; cache_index++)
+        JS_FreeValue(ctx, jsc->index_key_cache[cache_index]);
+    js_free_rt(ctx->rt, jsc->object_stack);
     return ret;
 }
 

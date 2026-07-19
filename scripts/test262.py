@@ -111,9 +111,13 @@ def run_one(job: tuple[Path, Path, Path, Path, tuple[str, bool, bool], float]) -
         cmd.append(str(test_path))
 
         try:
+            creationflags = 0
+            if os.name == "nt":
+                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             completed = subprocess.run(
                 cmd, cwd=path.parent, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 timeout=timeout, text=False, check=False,
+                creationflags=creationflags,
             )
         except subprocess.TimeoutExpired as exc:
             output = "\n".join(filter(None, [decode_output(exc.stdout), decode_output(exc.stderr)])).strip()
@@ -274,8 +278,9 @@ def main() -> int:
             pending_jobs.append(job)
 
     counts = Counter(result["status"] for result in results)
+    total_expected = len(profile_skips) + len(jobs)
     print(
-        f"TurboJS Test262: files={len(paths)} executions={len(jobs)} "
+        f"TurboJS Test262: files={len(paths)} executions={total_expected} "
         f"pending={len(pending_jobs)} workers={args.workers}",
         flush=True,
     )
@@ -293,7 +298,7 @@ def main() -> int:
                     write_report(args.report, make_report(cli, suite, started, counts, results, completed=False))
             if total_done % 1000 == 0 or pending_index == len(pending_jobs):
                 print(
-                    f"[{total_done}/{len(jobs)}] pass={counts['pass']} fail={counts['fail']} "
+                    f"[{total_done}/{total_expected}] pass={counts['pass']} fail={counts['fail']} "
                     f"skip={counts['skip']} timeout={counts['timeout']} "
                     f"harness-error={counts['harness-error']}",
                     flush=True,

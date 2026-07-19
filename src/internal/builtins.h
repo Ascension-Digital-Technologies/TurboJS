@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_BUILTINS_H
-#define QJS_INTERNAL_BUILTINS_H
+#ifndef TURBOJS_INTERNAL_BUILTINS_H
+#define TURBOJS_INTERNAL_BUILTINS_H
 
 /*
  * Ownership boundary: builtins subsystem.

@@ -1729,9 +1729,9 @@ int JS_AddIntrinsicDate(JSContext *ctx)
 
 int JS_AddIntrinsicEval(JSContext *ctx)
 {
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
     ctx->eval_internal = __JS_EvalInternal;
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
     return 0;
 }
 

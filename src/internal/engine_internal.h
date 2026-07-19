@@ -1,5 +1,5 @@
-#ifndef QJS_ENGINE_INTERNAL_H
-#define QJS_ENGINE_INTERNAL_H
+#ifndef TURBOJS_ENGINE_INTERNAL_H
+#define TURBOJS_ENGINE_INTERNAL_H
 
 /*
  * Private umbrella header for the TurboJS engine implementation.
@@ -11,7 +11,7 @@
  */
 
 #if !defined(TURBOJS_ENGINE_IMPLEMENTATION)
-#error "qjs/internal headers are private to the engine implementation"
+#error "TurboJS internal headers are private to the engine implementation"
 #endif
 
 #include "jit.h"

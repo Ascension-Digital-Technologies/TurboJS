@@ -1,0 +1,64 @@
+{
+  "TurboJS": {
+    "runs": 15,
+    "warmups": 5,
+    "int32_dynamic_bound": {
+      "median_ms": 0.0003110002726316452,
+      "min_ms": 0.0002699997276067734,
+      "max_ms": 0.008883001282811165,
+      "checksum": -30213900480
+    },
+    "float64_dynamic_bound": {
+      "median_ms": 5.1648730002343655,
+      "min_ms": 5.155608998611569,
+      "max_ms": 5.240674000233412,
+      "checksum": 4865435.806338395
+    },
+    "multi_accumulator_int32": {
+      "median_ms": 0.0004709996283054352,
+      "min_ms": 0.0004210006445646286,
+      "max_ms": 0.0019829999655485153,
+      "checksum": -30363900435
+    },
+    "affine_call_dynamic_bound": {
+      "median_ms": 0.0003609992563724518,
+      "min_ms": 0.00031999871134757996,
+      "max_ms": 0.003064000979065895,
+      "checksum": 562499812500000
+    }
+  },
+  "Node/V8": {
+    "runs": 15,
+    "warmups": 5,
+    "int32_dynamic_bound": {
+      "median_ms": 5.435111000000006,
+      "min_ms": 5.425587000000007,
+      "max_ms": 5.479096999999996,
+      "checksum": -30213900480
+    },
+    "float64_dynamic_bound": {
+      "median_ms": 5.192553000000004,
+      "min_ms": 5.150200999999981,
+      "max_ms": 5.217981000000009,
+      "checksum": 4865435.806338395
+    },
+    "multi_accumulator_int32": {
+      "median_ms": 5.555379000000016,
+      "min_ms": 5.428652,
+      "max_ms": 5.638140999999962,
+      "checksum": -30363900435
+    },
+    "affine_call_dynamic_bound": {
+      "median_ms": 4.818622000000005,
+      "min_ms": 4.748747999999978,
+      "max_ms": 5.448271000000034,
+      "checksum": 562499812500000
+    }
+  },
+  "ratios": {
+    "int32_dynamic_bound": 5.722059266713133e-05,
+    "float64_dynamic_bound": 0.9946692889286565,
+    "multi_accumulator_int32": 8.478262748687961e-05,
+    "affine_call_dynamic_bound": 7.491752961167143e-05
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "phase": 91,
+  "workload": "multi_conditional_sustained",
+  "iterations": 10000000,
+  "warmups": 5,
+  "measured_calls": 15,
+  "turbojs": {
+    "result": -999630016,
+    "median": 33.52100699953735,
+    "min": 33.22365799918771,
+    "max": 34.84614400006831
+  },
+  "node": {
+    "result": -999630016,
+    "median": 24.641173999999978,
+    "min": 24.489790999999997,
+    "max": 24.726560999999975
+  },
+  "turbojs_to_node_ratio": 1.3603656627536245
+}

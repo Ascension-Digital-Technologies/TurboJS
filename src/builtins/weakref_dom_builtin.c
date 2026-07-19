@@ -1526,7 +1526,7 @@ int JS_AddIntrinsicAToB(JSContext *ctx)
 
 bool JS_DetectModule(const char *input, size_t input_len)
 {
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
     JSRuntime *rt;
     JSContext *ctx;
     JSValue val;
@@ -1557,7 +1557,7 @@ bool JS_DetectModule(const char *input, size_t input_len)
     return is_module;
 #else
     return false;
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 }
 
 uintptr_t js_std_cmd(int cmd, ...) {

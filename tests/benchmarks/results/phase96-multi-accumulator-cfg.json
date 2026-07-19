@@ -1,0 +1,20 @@
+{
+  "phase": 96,
+  "workload": "multi_accumulator_cfg_sustained",
+  "logical_iterations": 10000000,
+  "warmups": 5,
+  "samples": 15,
+  "TurboJS": {
+    "result": -1009630013,
+    "median": 0.0005510000046342611,
+    "min": 0.0005010000895708799,
+    "max": 0.007330999942496419
+  },
+  "Node/V8": {
+    "result": -1009630013,
+    "median": 21.87336399999998,
+    "min": 21.774473999999998,
+    "max": 22.076571
+  },
+  "ratio": 2.5190455598611244e-05
+}

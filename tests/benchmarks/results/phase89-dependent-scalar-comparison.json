@@ -1,0 +1,10 @@
+{
+  "workload": "dependent_accumulator_sustained",
+  "iterations_per_call": 1000000,
+  "warmups": 5,
+  "measured_calls": 15,
+  "checksum": -1326954301,
+  "turbojs": {"median_ms": 3.307263, "min_ms": 3.268335, "max_ms": 3.650469},
+  "node_22_16_0": {"median_ms": 4.372786, "min_ms": 4.356532, "max_ms": 4.423891},
+  "turbojs_to_node_ratio": 0.75636
+}

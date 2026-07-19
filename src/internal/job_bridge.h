@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_JOB_BRIDGE_H
-#define QJS_INTERNAL_JOB_BRIDGE_H
+#ifndef TURBOJS_INTERNAL_JOB_BRIDGE_H
+#define TURBOJS_INTERNAL_JOB_BRIDGE_H
 
 /* Private opaque bridge for independently compiled job queue APIs. */
 #include <turbojs.h>

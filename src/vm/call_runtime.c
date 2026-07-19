@@ -1722,8 +1722,12 @@ static void close_lexical_var(JSContext *ctx, JSFunctionBytecode *b,
     }
 }
 
-#define JS_CALL_FLAG_COPY_ARGV   (1 << 1)
-#define JS_CALL_FLAG_GENERATOR   (1 << 2)
+#define JS_CALL_FLAG_COPY_ARGV       (1 << 1)
+#define JS_CALL_FLAG_GENERATOR       (1 << 2)
+/* Internal fast-entry flags used only after the caller has validated the
+   bytecode-function object and attempted its native tiers. */
+#define JS_CALL_FLAG_JIT_ATTEMPTED   (1 << 3)
+#define JS_CALL_FLAG_BYTECODE_DIRECT (1 << 4)
 
 static JSValue js_call_c_function(JSContext *ctx, JSValueConst func_obj,
                                   JSValueConst this_obj,

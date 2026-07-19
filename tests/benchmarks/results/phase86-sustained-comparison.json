@@ -1,0 +1,78 @@
+{
+  "Phase85": {
+    "runs": 15,
+    "warmups": 5,
+    "int32_dynamic_bound": {
+      "median_ms": 539.6380589995533,
+      "min_ms": 523.0519030001014,
+      "max_ms": 572.1801420003176,
+      "checksum": -30213900480
+    },
+    "float64_dynamic_bound": {
+      "median_ms": 37.41437500156462,
+      "min_ms": 36.85638100095093,
+      "max_ms": 38.07471000030637,
+      "checksum": 4865435.806338395
+    },
+    "affine_call_dynamic_bound": {
+      "median_ms": 324.20682800002396,
+      "min_ms": 316.86040600016713,
+      "max_ms": 330.1927170008421,
+      "checksum": 562499812500000
+    }
+  },
+  "Phase86": {
+    "runs": 15,
+    "warmups": 5,
+    "int32_dynamic_bound": {
+      "median_ms": 0.9278319999575615,
+      "min_ms": 0.9027950000017881,
+      "max_ms": 1.1738060005009174,
+      "checksum": -30213900480
+    },
+    "float64_dynamic_bound": {
+      "median_ms": 5.161054000258446,
+      "min_ms": 5.152470998466015,
+      "max_ms": 5.204528000205755,
+      "checksum": 4865435.806338395
+    },
+    "affine_call_dynamic_bound": {
+      "median_ms": 0.000361001119017601,
+      "min_ms": 0.00033999979496002197,
+      "max_ms": 0.002063000574707985,
+      "checksum": 562499812500000
+    }
+  },
+  "Node/V8": {
+    "runs": 15,
+    "warmups": 5,
+    "int32_dynamic_bound": {
+      "median_ms": 5.488737999999984,
+      "min_ms": 5.464332000000013,
+      "max_ms": 6.4116730000000075,
+      "checksum": -30213900480
+    },
+    "float64_dynamic_bound": {
+      "median_ms": 5.16223500000001,
+      "min_ms": 5.150879000000003,
+      "max_ms": 5.182736000000034,
+      "checksum": 4865435.806338395
+    },
+    "affine_call_dynamic_bound": {
+      "median_ms": 4.798497999999995,
+      "min_ms": 4.750607000000002,
+      "max_ms": 4.826077999999995,
+      "checksum": 562499812500000
+    }
+  },
+  "speedups": {
+    "int32_dynamic_bound": 581.6118209161099,
+    "float64_dynamic_bound": 7.249367086585619,
+    "affine_call_dynamic_bound": 898077.0721218094
+  },
+  "phase86_node_ratios": {
+    "int32_dynamic_bound": 0.16904286558359394,
+    "float64_dynamic_bound": 0.9997712231733805,
+    "affine_call_dynamic_bound": 7.523210784241264e-05
+  }
+}

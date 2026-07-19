@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_OBJECTS_H
-#define QJS_INTERNAL_OBJECTS_H
+#ifndef TURBOJS_INTERNAL_OBJECTS_H
+#define TURBOJS_INTERNAL_OBJECTS_H
 
 /*
  * Ownership boundary: objects subsystem.

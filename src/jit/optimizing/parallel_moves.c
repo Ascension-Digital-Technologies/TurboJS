@@ -1,0 +1,9 @@
+#include "jit.h"
+#include <stdlib.h>
+#include <string.h>
+static int eq(TurboJSMoveLocation a,TurboJSMoveLocation b){return a.kind==b.kind&&a.register_class==b.register_class&&a.index==b.index;}
+static int source_used(const TurboJSParallelMove *m,const unsigned char *done,size_t n,TurboJSMoveLocation d){size_t i;for(i=0;i<n;i++)if(!done[i]&&eq(m[i].source,d)&&!eq(m[i].source,m[i].destination))return 1;return 0;}
+TurboJSIRStatus TurboJS_ResolveParallelMoves(const TurboJSParallelMove *m,size_t n,TurboJSMoveLocation is,TurboJSMoveLocation fs,TurboJSMoveSequence *out){unsigned char *done;TurboJSParallelMove *r;size_t left=0,o=0,i;if(!out||(!m&&n))return TURBOJS_IR_INVALID_ARGUMENT;memset(out,0,sizeof(*out));if(!n)return TURBOJS_IR_OK;done=calloc(n,1);r=calloc(n*2,sizeof(*r));if(!done||!r){free(done);free(r);return TURBOJS_IR_OUT_OF_MEMORY;}for(i=0;i<n;i++)if(eq(m[i].source,m[i].destination))done[i]=1;else left++;
+while(left){int progress=0;for(i=0;i<n;i++)if(!done[i]&&!source_used(m,done,n,m[i].destination)){r[o++]=m[i];done[i]=1;left--;progress=1;}if(progress)continue;for(i=0;i<n&&done[i];i++){ /* find first pending move */ }if(i==n)break;{TurboJSMoveLocation scratch=m[i].source.register_class==TURBOJS_REGISTER_CLASS_FLOAT64?fs:is;size_t j=i;if(scratch.kind!=TURBOJS_MOVE_SCRATCH){free(done);free(r);return TURBOJS_IR_INVALID_ARGUMENT;}r[o++]=(TurboJSParallelMove){m[i].source,scratch};for(;;){size_t k;TurboJSMoveLocation want=m[j].source;for(k=0;k<n;k++)if(!done[k]&&eq(m[k].destination,want))break;if(k==n){r[o++]=(TurboJSParallelMove){scratch,m[j].destination};done[j]=1;left--;break;}r[o++]=m[k];done[k]=1;left--;j=k;if(eq(m[j].source,m[i].destination)){r[o-1].source=scratch;break;}}}}
+free(done);out->moves=r;out->count=o;return TURBOJS_IR_OK;}
+void TurboJS_MoveSequenceDestroy(TurboJSMoveSequence *s){if(!s)return;free(s->moves);memset(s,0,sizeof(*s));}

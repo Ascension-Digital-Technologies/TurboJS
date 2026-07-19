@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_RUNTIME_H
-#define QJS_INTERNAL_RUNTIME_H
+#ifndef TURBOJS_INTERNAL_RUNTIME_H
+#define TURBOJS_INTERNAL_RUNTIME_H
 
 /*
  * Ownership boundary: runtime subsystem.

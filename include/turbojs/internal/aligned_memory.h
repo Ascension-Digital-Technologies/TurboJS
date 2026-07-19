@@ -1,0 +1,45 @@
+#ifndef TURBOJS_INTERNAL_ALIGNED_MEMORY_H
+#define TURBOJS_INTERNAL_ALIGNED_MEMORY_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#if defined(_WIN32)
+#include <malloc.h>
+#endif
+
+/*
+ * Cross-platform aligned allocation helper.
+ *
+ * Windows uses _aligned_malloc/_aligned_free, while C11 platforms use
+ * aligned_alloc/free.  The requested size is rounded up for C11 because
+ * aligned_alloc requires the allocation size to be a multiple of alignment.
+ */
+static inline void *turbojs_aligned_alloc(size_t alignment, size_t size)
+{
+    size_t rounded_size;
+
+    if (alignment == 0 || (alignment & (alignment - 1)) != 0)
+        return NULL;
+
+#if defined(_WIN32)
+    return _aligned_malloc(size, alignment);
+#else
+    if (size > SIZE_MAX - (alignment - 1))
+        return NULL;
+    rounded_size = (size + alignment - 1) & ~(alignment - 1);
+    return aligned_alloc(alignment, rounded_size);
+#endif
+}
+
+static inline void turbojs_aligned_free(void *memory)
+{
+#if defined(_WIN32)
+    _aligned_free(memory);
+#else
+    free(memory);
+#endif
+}
+
+#endif /* TURBOJS_INTERNAL_ALIGNED_MEMORY_H */

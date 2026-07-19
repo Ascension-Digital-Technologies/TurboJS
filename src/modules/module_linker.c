@@ -224,7 +224,7 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
     return js_dup(m->promise);
 }
 
-#ifndef QJS_DISABLE_PARSER
+#ifndef TURBOJS_DISABLE_PARSER
 
 /* Parse 'with { key: "value", ... }' clause for import attributes.
    rme->attributes is set to JS_UNDEFINED if no 'with' clause or an object
@@ -815,5 +815,5 @@ static JSFunctionDef *js_new_function_def(JSContext *ctx,
     return fd;
 }
 
-#endif // QJS_DISABLE_PARSER
+#endif // TURBOJS_DISABLE_PARSER
 

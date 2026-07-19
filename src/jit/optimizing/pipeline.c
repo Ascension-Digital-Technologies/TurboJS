@@ -5,6 +5,7 @@
 struct TurboJSOptimizedFunction {
     TurboJSNativeFunction *native;
     TurboJSSSAGraph graph;
+    TurboJSLinearScanResult allocation;
 };
 
 static TurboJSIRStatus fail(TurboJSIRDiagnostic *d, TurboJSIRStatus s,
@@ -86,13 +87,22 @@ TurboJSIRStatus TurboJS_OptimizingCompile(const TurboJSIRFunction *function,
     { TurboJSSSAOptimizationStats s=TurboJS_SSAOptimize(&o->graph);
       if(stats){stats->ssa.constants_folded+=s.constants_folded;stats->ssa.values_removed+=s.values_removed;stats->ssa.branches_folded+=s.branches_folded;stats->ssa.blocks_removed+=s.blocks_removed;stats->ssa.phis_inserted+=s.phis_inserted;stats->ssa.guards_inserted+=s.guards_inserted;}}
     if(!TurboJS_SSAVerify(&o->graph)){st=fail(diagnostic,TURBOJS_IR_INVALID_OPCODE,0,"optimized SSA verification failed");goto bad;}
+    st=TurboJS_LinearScanAllocate(&o->graph,6,8,&o->allocation);if(st!=TURBOJS_IR_OK)goto bad;
+    if(stats){
+        size_t ai;
+        stats->allocated_intervals=(uint32_t)o->allocation.interval_count;
+        stats->spill_slots=o->allocation.spill_slot_count;
+        for(ai=0;ai<o->allocation.interval_count;ai++)
+            if(o->allocation.intervals[ai].spill_slot>=0) stats->spilled_intervals++;
+    }
     st=lower_graph(&o->graph,function->argument_count,&lowered,diagnostic);if(st!=TURBOJS_IR_OK)goto bad;
     st=TurboJS_BaselineCompile(&lowered,&o->native,diagnostic);TurboJS_IRFunctionDestroy(&lowered);if(st!=TURBOJS_IR_OK)goto bad;
     if(stats){stats->output_values=(uint32_t)o->graph.value_count-stats->ssa.values_removed;stats->deopt_exits=o->graph.deopt_exit_count;stats->native_code_bytes=TurboJS_NativeCodeSize(o->native);}
     *out_function=o;return TURBOJS_IR_OK;
 bad:
-    TurboJS_SSAGraphDestroy(&o->graph);free(o);return st;
+    TurboJS_LinearScanResultDestroy(&o->allocation);TurboJS_SSAGraphDestroy(&o->graph);free(o);return st;
 }
 TurboJSIRStatus TurboJS_OptimizedInvoke(const TurboJSOptimizedFunction *f,const int64_t*a,size_t n,int64_t*r){return f&&f->native?TurboJS_NativeInvoke(f->native,a,n,r):TURBOJS_IR_INVALID_ARGUMENT;}
-void TurboJS_OptimizedFunctionDestroy(TurboJSOptimizedFunction *f){if(!f)return;TurboJS_NativeFunctionDestroy(f->native);TurboJS_SSAGraphDestroy(&f->graph);free(f);}
+void TurboJS_OptimizedFunctionDestroy(TurboJSOptimizedFunction *f){if(!f)return;TurboJS_NativeFunctionDestroy(f->native);TurboJS_LinearScanResultDestroy(&f->allocation);TurboJS_SSAGraphDestroy(&f->graph);free(f);}
 size_t TurboJS_OptimizedCodeSize(const TurboJSOptimizedFunction *f){return f&&f->native?TurboJS_NativeCodeSize(f->native):0;}
+const TurboJSLinearScanResult *TurboJS_OptimizedAllocation(const TurboJSOptimizedFunction *f){return f?&f->allocation:NULL;}

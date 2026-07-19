@@ -1,0 +1,11 @@
+{
+  "engine": "Node v22.16.0",
+  "clock": "hrtime_bigint_ns",
+  "runs": 15,
+  "warmups": 3,
+  "repetitions": 5,
+  "median_ns": 2879142,
+  "min_ns": 2806523,
+  "max_ns": 3112500,
+  "checksum": 2499997500000
+}

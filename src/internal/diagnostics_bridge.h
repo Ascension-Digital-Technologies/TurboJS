@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_DIAGNOSTICS_BRIDGE_H
-#define QJS_INTERNAL_DIAGNOSTICS_BRIDGE_H
+#ifndef TURBOJS_INTERNAL_DIAGNOSTICS_BRIDGE_H
+#define TURBOJS_INTERNAL_DIAGNOSTICS_BRIDGE_H
 
 /*
  * Private bridge for independently compiled diagnostics and memory-reporting

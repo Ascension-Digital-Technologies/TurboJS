@@ -1,9 +1,9 @@
-#ifndef QJS_INTERNAL_RUNTIME_BRIDGE_H
-#define QJS_INTERNAL_RUNTIME_BRIDGE_H
+#ifndef TURBOJS_INTERNAL_RUNTIME_BRIDGE_H
+#define TURBOJS_INTERNAL_RUNTIME_BRIDGE_H
 
 /*
  * Private bridge for the independently compiled runtime configuration facade.
- * Only public opaque QuickJS types cross this boundary.
+ * Only public opaque TurboJS API types cross this boundary.
  */
 
 #include <turbojs.h>
@@ -27,7 +27,11 @@ void turbojs_internal_set_max_stack_size(JSRuntime *rt, size_t stack_size);
 /* Baseline JIT runtime controls. */
 #include "optimization.h"
 void turbojs_internal_set_jit_threshold(JSRuntime *rt, uint32_t threshold);
+void turbojs_internal_set_optimization_config(
+    JSRuntime *rt, const TurboJSOptimizationConfig *config);
+TurboJSOptimizationConfig turbojs_internal_get_optimization_config(const JSRuntime *rt);
 TurboJSRuntimeJITStats turbojs_internal_get_jit_stats(const JSRuntime *rt);
+void turbojs_internal_reset_jit_stats(JSRuntime *rt);
 void turbojs_internal_clear_jit_cache(JSRuntime *rt);
 
 #endif

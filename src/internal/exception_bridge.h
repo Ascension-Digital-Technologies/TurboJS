@@ -1,5 +1,5 @@
-#ifndef QJS_INTERNAL_EXCEPTION_BRIDGE_H
-#define QJS_INTERNAL_EXCEPTION_BRIDGE_H
+#ifndef TURBOJS_INTERNAL_EXCEPTION_BRIDGE_H
+#define TURBOJS_INTERNAL_EXCEPTION_BRIDGE_H
 
 /* Private opaque bridge for independently compiled exception-state APIs. */
 #include <turbojs.h>

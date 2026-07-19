@@ -39,12 +39,12 @@ def main() -> int:
     compiler = args.compiler.resolve()
     if not compiler.is_file():
         raise SystemExit(f"compiler not found: {compiler}")
-    generate(compiler, "runtime/repl/repl.js", "src/generated/runtime/repl.c", "qjsc_repl", False)
+    generate(compiler, "apps/turbojs/scripts/repl.js", "generated/runtime/repl.c", "turbojsc_repl", False)
     generate(
         compiler,
-        "runtime/bootstrap/standalone.js",
-        "src/generated/runtime/standalone.c",
-        "qjsc_standalone",
+        "apps/turbojs/scripts/standalone.js",
+        "generated/runtime/standalone.c",
+        "turbojsc_standalone",
         True,
     )
     print("TurboJS runtime bytecode sources regenerated")
