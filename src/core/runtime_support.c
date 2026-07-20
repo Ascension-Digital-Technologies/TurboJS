@@ -787,6 +787,12 @@ TurboJSRuntimeJITStats turbojs_internal_get_jit_stats(const JSRuntime *rt)
     out.osr_rejections_unsupported = rt->osr_rejections_unsupported;
     out.osr_rejections_allocation = rt->osr_rejections_allocation;
     out.osr_rejections_backend = rt->osr_rejections_backend;
+    out.osr_rejections_calls = rt->osr_rejections_calls;
+    out.osr_rejections_properties = rt->osr_rejections_properties;
+    out.osr_rejections_indexed = rt->osr_rejections_indexed;
+    out.osr_rejections_numeric = rt->osr_rejections_numeric;
+    out.osr_rejections_control_flow = rt->osr_rejections_control_flow;
+    out.osr_rejections_other = rt->osr_rejections_other;
     out.osr_leaf_call_entries = rt->osr_leaf_call_entries;
     out.osr_leaf_call_iterations = rt->osr_leaf_call_iterations;
     out.osr_int32_mix_entries = rt->osr_int32_mix_entries;
@@ -902,6 +908,12 @@ void turbojs_internal_reset_jit_stats(JSRuntime *rt)
     TURBOJS_RESET_COUNTER(osr_rejections_unsupported);
     TURBOJS_RESET_COUNTER(osr_rejections_allocation);
     TURBOJS_RESET_COUNTER(osr_rejections_backend);
+    TURBOJS_RESET_COUNTER(osr_rejections_calls);
+    TURBOJS_RESET_COUNTER(osr_rejections_properties);
+    TURBOJS_RESET_COUNTER(osr_rejections_indexed);
+    TURBOJS_RESET_COUNTER(osr_rejections_numeric);
+    TURBOJS_RESET_COUNTER(osr_rejections_control_flow);
+    TURBOJS_RESET_COUNTER(osr_rejections_other);
     TURBOJS_RESET_COUNTER(osr_leaf_call_entries);
     TURBOJS_RESET_COUNTER(osr_leaf_call_iterations);
     TURBOJS_RESET_COUNTER(osr_int32_mix_entries);

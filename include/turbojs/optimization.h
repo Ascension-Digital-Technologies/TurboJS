@@ -157,6 +157,12 @@ typedef struct TurboJSRuntimeJITStats {
     uint64_t osr_rejections_unsupported;
     uint64_t osr_rejections_allocation;
     uint64_t osr_rejections_backend;
+    uint64_t osr_rejections_calls;
+    uint64_t osr_rejections_properties;
+    uint64_t osr_rejections_indexed;
+    uint64_t osr_rejections_numeric;
+    uint64_t osr_rejections_control_flow;
+    uint64_t osr_rejections_other;
     uint64_t osr_leaf_call_entries;
     uint64_t osr_leaf_call_iterations;
     uint64_t osr_int32_mix_entries;

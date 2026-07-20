@@ -2,6 +2,72 @@
  * Ownership: vm subsystem. Assembled by tools/generate_engine_unit.py; not compiled independently yet.
  */
 
+extern JSValue js_string_charCodeAt(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv);
+
+/* Fast entry for ordinary same-realm native builtins.  The generic class-call
+   path must resolve the callable class and then construct a complete call
+   frame.  Hot builtin sites have already proved the object and class here, so
+   keep only the lightweight frame required for stack inspection and argument
+   padding.  Constructors, accessors, iterator-next functions, cross-realm
+   calls, and uncommon C prototypes remain on JS_CallInternal(). */
+static int turbojs_try_direct_c_function_call(JSContext *ctx,
+                                               JSValueConst func_obj,
+                                               JSValueConst this_obj,
+                                               int argc,
+                                               JSValueConst *argv,
+                                               JSValue *result)
+{
+    JSRuntime *rt = ctx->rt;
+    JSObject *obj;
+    JSStackFrame frame;
+    JSStackFrame *previous;
+    JSValueConst *args = argv;
+    int required, i;
+
+    if (unlikely(JS_VALUE_GET_TAG(func_obj) != JS_TAG_OBJECT))
+        return 0;
+    obj = JS_VALUE_GET_OBJ(func_obj);
+    if (unlikely(obj->class_id != JS_CLASS_C_FUNCTION ||
+                 obj->u.cfunc.realm != ctx))
+        return 0;
+    if (unlikely(obj->u.cfunc.cproto != JS_CFUNC_generic &&
+                 obj->u.cfunc.cproto != JS_CFUNC_generic_magic))
+        return 0;
+
+    required = obj->u.cfunc.length;
+    if (unlikely(required < 0 ||
+                 js_check_stack_overflow(rt,
+                     sizeof(JSValueConst) * (size_t)required)))
+        return 0;
+
+    if (unlikely(argc < required)) {
+        JSValueConst *padded = alloca(sizeof(*padded) * (size_t)required);
+        for (i = 0; i < argc; i++)
+            padded[i] = argv[i];
+        for (; i < required; i++)
+            padded[i] = JS_UNDEFINED;
+        args = padded;
+    }
+
+    memset(&frame, 0, sizeof(frame));
+    previous = rt->current_stack_frame;
+    frame.prev_frame = previous;
+    frame.cur_func = unsafe_unconst(func_obj);
+    frame.arg_count = argc < required ? required : argc;
+    frame.arg_buf = (JSValue *)args;
+    rt->current_stack_frame = &frame;
+
+    if (obj->u.cfunc.cproto == JS_CFUNC_generic)
+        *result = obj->u.cfunc.c_function.generic(ctx, this_obj, argc, args);
+    else
+        *result = obj->u.cfunc.c_function.generic_magic(
+            ctx, this_obj, argc, args, obj->u.cfunc.magic);
+
+    rt->current_stack_frame = previous;
+    return 1;
+}
+
 static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                                JSValueConst this_obj, JSValueConst new_target,
                                int argc, JSValueConst *argv, int flags)
@@ -34,6 +100,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 #define DEF(id, size, n_pop, n_push, f) && case_OP_ ## id,
 #define def(id, size, n_pop, n_push, f)
 #include "bytecode_opcodes.h"
+
         [ OP_COUNT ... 255 ] = &&case_default
     };
 #define SWITCH(pc)      DUMP_BYTECODE_OR_DONT(pc) __extension__ ({ goto *dispatch_table[opcode = *pc++]; });
@@ -553,9 +620,10 @@ bytecode_function_ready:
                                                          call_bc, call_argc,
                                                          vc(call_argv), &ret_val)))
                             goto call_result_ready;
-                        if (turbojs_try_inline_leaf_call(call_bc, call_argc,
-                                                         vc(call_argv), &ret_val)) {
-                            turbojs_relay_install_leaf(rt, b, call_site_offset, call_bc);
+                        if (turbojs_try_inline_leaf_call_object(call_obj, call_bc, call_argc,
+                                                                vc(call_argv), &ret_val)) {
+                            if (call_bc->closure_var_count == 0)
+                                turbojs_relay_install_leaf(rt, b, call_site_offset, call_bc);
                             goto call_result_ready;
                         }
                         if (call_bc->jit_region_native || call_bc->jit_reserved) {
@@ -573,9 +641,13 @@ bytecode_function_ready:
                         }
                     }
                 }
-                ret_val = JS_CallInternal(ctx, call_argv[-1], JS_UNDEFINED,
-                                          JS_UNDEFINED, call_argc,
-                                          vc(call_argv), call_flags);
+                if (!turbojs_try_direct_c_function_call(
+                        ctx, call_argv[-1], JS_UNDEFINED, call_argc,
+                        vc(call_argv), &ret_val)) {
+                    ret_val = JS_CallInternal(ctx, call_argv[-1], JS_UNDEFINED,
+                                              JS_UNDEFINED, call_argc,
+                                              vc(call_argv), call_flags);
+                }
             call_result_ready:
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
@@ -628,9 +700,10 @@ bytecode_function_ready:
                                                          call_bc, call_argc,
                                                          vc(call_argv), &ret_val)))
                             goto call_method_result_ready;
-                        if (turbojs_try_inline_leaf_call(call_bc, call_argc,
-                                                         vc(call_argv), &ret_val)) {
-                            turbojs_relay_install_leaf(rt, b, call_site_offset, call_bc);
+                        if (turbojs_try_inline_leaf_call_object(call_obj, call_bc, call_argc,
+                                                                vc(call_argv), &ret_val)) {
+                            if (call_bc->closure_var_count == 0)
+                                turbojs_relay_install_leaf(rt, b, call_site_offset, call_bc);
                             goto call_method_result_ready;
                         }
                         if (call_bc->jit_region_native || call_bc->jit_reserved) {
@@ -648,9 +721,23 @@ bytecode_function_ready:
                         }
                     }
                 }
-                ret_val = JS_CallInternal(ctx, call_argv[-1], call_argv[-2],
-                                          JS_UNDEFINED, call_argc,
-                                          vc(call_argv), call_flags);
+                if (likely(call_argc == 1 &&
+                           JS_VALUE_GET_TAG(call_argv[-1]) == JS_TAG_OBJECT)) {
+                    JSObject *builtin_obj = JS_VALUE_GET_OBJ(call_argv[-1]);
+                    if (likely(builtin_obj->class_id == JS_CLASS_C_FUNCTION &&
+                               builtin_obj->u.cfunc.cproto == JS_CFUNC_generic &&
+                               builtin_obj->u.cfunc.c_function.generic == js_string_charCodeAt)) {
+                        ret_val = js_string_charCodeAt(ctx, call_argv[-2], 1, vc(call_argv));
+                        goto call_method_result_ready;
+                    }
+                }
+                if (!turbojs_try_direct_c_function_call(
+                        ctx, call_argv[-1], call_argv[-2], call_argc,
+                        vc(call_argv), &ret_val)) {
+                    ret_val = JS_CallInternal(ctx, call_argv[-1], call_argv[-2],
+                                              JS_UNDEFINED, call_argc,
+                                              vc(call_argv), call_flags);
+                }
             call_method_result_ready:
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
@@ -1886,10 +1973,31 @@ bytecode_function_ready:
             {
                 int ret;
                 JSAtom atom;
+                JSValue obj, value;
                 atom = get_u32(pc);
                 pc += 4;
+                obj = sp[-2];
+                value = sp[-1];
 
-                ret = JS_DefinePropertyValue(ctx, sp[-2], atom, sp[-1],
+                /* Object literals overwhelmingly define fresh data fields on
+                 * ordinary extensible objects.  Avoid the public descriptor
+                 * machinery in that exact case and enter the shape-transition
+                 * path directly.  Existing properties, arrays, exotic or
+                 * non-extensible objects retain the canonical semantics. */
+                if (likely(JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT)) {
+                    JSObject *p = JS_VALUE_GET_OBJ(obj);
+                    JSProperty *existing;
+                    if (likely(!p->is_exotic && p->extensible) &&
+                        likely(find_own_property(&existing, p, atom) == NULL)) {
+                        JSProperty *pr = add_property(ctx, p, atom, JS_PROP_C_W_E);
+                        if (unlikely(!pr))
+                            goto exception;
+                        pr->u.value = value;
+                        sp--;
+                        BREAK;
+                    }
+                }
+                ret = JS_DefinePropertyValue(ctx, obj, atom, value,
                                              JS_PROP_C_W_E | JS_PROP_THROW);
                 sp--;
                 if (unlikely(ret < 0))
@@ -2139,6 +2247,7 @@ bytecode_function_ready:
                                    !JS_IsUninitialized(p->u.array.u.values[idx]) &&
                                    p->shape->proto == JS_VALUE_GET_OBJ(ctx->class_proto[JS_CLASS_ARRAY]) &&
                                    ctx->std_array_prototype)) {
+                            p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, val);
                             set_value(ctx, &p->u.array.u.values[idx], val);
                             rt->dense_array_store_hits++;
                             JS_FreeValue(ctx, sp[-3]);
@@ -2158,6 +2267,7 @@ bytecode_function_ready:
                                 array_len = JS_VALUE_GET_INT(p->prop[0].u.value);
                                 if (likely(new_len <= p->u.array.u1.size)) {
                                     p->u.array.u.values[idx] = val;
+                                    p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, val);
                                     p->u.array.count = new_len;
                                     rt->dense_array_store_hits++;
                                     if (new_len > array_len)
@@ -2300,6 +2410,17 @@ bytecode_function_ready:
                     JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
                     sp[-2] = js_float64(d1 + d2);
                     JS_X87_FPCW_RESTORE(fpcw);
+                    sp--;
+                } else if ((tag_is_string(JS_VALUE_GET_NORM_TAG(op1)) &&
+                            JS_VALUE_GET_NORM_TAG(op2) != JS_TAG_OBJECT) ||
+                           (tag_is_string(JS_VALUE_GET_NORM_TAG(op2)) &&
+                            JS_VALUE_GET_NORM_TAG(op1) != JS_TAG_OBJECT)) {
+                    /* String + primitive can bypass the generic ToPrimitive path.
+                       JS_ConcatString retains canonical ToString and exception semantics. */
+                    sf->cur_pc = pc;
+                    sp[-2] = JS_ConcatString(ctx, op1, op2);
+                    if (unlikely(JS_IsException(sp[-2])))
+                        goto exception;
                     sp--;
                 } else {
                 add_slow_case:
@@ -2507,6 +2628,22 @@ bytecode_function_ready:
                         goto binary_arith_slow;
                     r = v1 % v2;
                     sp[-2] = js_int32(r);
+                    sp--;
+                } else if (likely(JS_VALUE_GET_TAG(op2) == JS_TAG_INT &&
+                                   JS_VALUE_GET_INT(op2) > 0 &&
+                                   JS_TAG_IS_FLOAT64(JS_VALUE_GET_TAG(op1)))) {
+                    /* Unsigned 32-bit values produced by >>> 0 are represented
+                       as Float64 when they exceed INT32_MAX. They remain exact
+                       integers, so a positive Int32 divisor can use native
+                       integer remainder without ToNumeric/fmod dispatch. */
+                    double d1 = JS_VALUE_GET_FLOAT64(op1);
+                    int32_t v2 = JS_VALUE_GET_INT(op2);
+                    uint32_t u1;
+                    if (unlikely(!isfinite(d1) || d1 < 0.0 ||
+                                 d1 > 4294967295.0 || d1 != floor(d1)))
+                        goto binary_arith_slow;
+                    u1 = (uint32_t)d1;
+                    sp[-2] = js_int32((int32_t)(u1 % (uint32_t)v2));
                     sp--;
                 } else {
                     goto binary_arith_slow;
@@ -2869,8 +3006,46 @@ bytecode_function_ready:
             OP_CMP(OP_gte, >=, js_relational_slow(ctx, sp, opcode));
             OP_CMP(OP_eq, ==, js_eq_slow(ctx, sp, 0));
             OP_CMP(OP_neq, !=, js_eq_slow(ctx, sp, 1));
-            OP_CMP(OP_strict_eq, ==, js_strict_eq_slow(ctx, sp, 0));
-            OP_CMP(OP_strict_neq, !=, js_strict_eq_slow(ctx, sp, 1));
+
+#define OP_STRICT_CMP(opcode, invert)                         \
+            CASE(opcode):                                    \
+                {                                             \
+                JSValue op1 = sp[-2], op2 = sp[-1];           \
+                int cmp_result;                               \
+                if (likely(JS_VALUE_IS_BOTH_INT(op1, op2))) { \
+                    cmp_result = JS_VALUE_GET_INT(op1) == JS_VALUE_GET_INT(op2); \
+                } else if (likely(JS_VALUE_GET_TAG(op1) == JS_TAG_STRING && \
+                                  JS_VALUE_GET_TAG(op2) == JS_TAG_STRING)) { \
+                    JSString *s1 = JS_VALUE_GET_STRING(op1);   \
+                    JSString *s2 = JS_VALUE_GET_STRING(op2);   \
+                    cmp_result = s1 == s2 || js_string_compare(s1, s2) == 0; \
+                    JS_FreeValue(ctx, op1);                    \
+                    JS_FreeValue(ctx, op2);                    \
+                } else {                                      \
+                    sf->cur_pc = pc;                           \
+                    if (js_strict_eq_slow(ctx, sp, invert))    \
+                        goto exception;                        \
+                    sp--;                                     \
+                    BREAK;                                    \
+                }                                             \
+                cmp_result ^= (invert);                       \
+                if (likely(pc[0] == OP_if_false8 || pc[0] == OP_if_true8)) { \
+                    int take = pc[0] == OP_if_true8 ? cmp_result : !cmp_result; \
+                    uint8_t *disp_pc = pc + 1;                 \
+                    sp -= 2;                                  \
+                    pc = take ? disp_pc + (int8_t)disp_pc[0] : pc + 2; \
+                    if (unlikely(js_poll_interrupts(ctx)))     \
+                        goto exception;                        \
+                } else {                                      \
+                    sp[-2] = js_bool(cmp_result);              \
+                    sp--;                                     \
+                }                                             \
+                }                                             \
+            BREAK
+
+            OP_STRICT_CMP(OP_strict_eq, 0);
+            OP_STRICT_CMP(OP_strict_neq, 1);
+#undef OP_STRICT_CMP
 
         CASE(OP_in):
             sf->cur_pc = pc;

@@ -1,0 +1,89 @@
+{
+  "baseline": {
+    "geometric_mean_ratio": 7.333584531931772,
+    "median_ratio": 7.2485204166045305,
+    "turbojs_total_ms": 513.5286050029099,
+    "node_total_ms": 63.222303000000025,
+    "total_ratio": 8.12258618612659
+  },
+  "candidate": {
+    "geometric_mean_ratio": 5.413975368670794,
+    "median_ratio": 6.011419483440852,
+    "turbojs_total_ms": 489.89616700075567,
+    "node_total_ms": 65.2798039999999,
+    "total_ratio": 7.504559404019602
+  },
+  "turbojs_total_improvement_percent": 4.6019711018863925,
+  "workloads": [
+    {
+      "workload": "numeric_simulation",
+      "baseline_turbojs_ms": 3.262295000255108,
+      "candidate_turbojs_ms": 3.7814160007983446,
+      "turbojs_improvement_percent": -15.912754686582362,
+      "candidate_v8_ratio": 4.267482226383421
+    },
+    {
+      "workload": "order_processing",
+      "baseline_turbojs_ms": 50.01869599893689,
+      "candidate_turbojs_ms": 50.1530039999634,
+      "turbojs_improvement_percent": -0.26851559870606345,
+      "candidate_v8_ratio": 3.0448114148250536
+    },
+    {
+      "workload": "ast_pipeline",
+      "baseline_turbojs_ms": 14.868225000798702,
+      "candidate_turbojs_ms": 14.371361000463367,
+      "turbojs_improvement_percent": 3.341784243301704,
+      "candidate_v8_ratio": 7.0437144357786465
+    },
+    {
+      "workload": "event_routing",
+      "baseline_turbojs_ms": 64.56205799989402,
+      "candidate_turbojs_ms": 64.81770800054073,
+      "turbojs_improvement_percent": -0.39597560636485607,
+      "candidate_v8_ratio": 7.120203881048283
+    },
+    {
+      "workload": "graph_analytics",
+      "baseline_turbojs_ms": 16.193819001317024,
+      "candidate_turbojs_ms": 15.72881899960339,
+      "turbojs_improvement_percent": 2.871465969057797,
+      "candidate_v8_ratio": 11.132554585536592
+    },
+    {
+      "workload": "text_indexing",
+      "baseline_turbojs_ms": 22.11940100044012,
+      "candidate_turbojs_ms": 22.439296999946237,
+      "turbojs_improvement_percent": -1.4462236093090892,
+      "candidate_v8_ratio": 3.2945855519303096
+    },
+    {
+      "workload": "collection_transforms",
+      "baseline_turbojs_ms": 46.25308400020003,
+      "candidate_turbojs_ms": 45.2392499987036,
+      "turbojs_improvement_percent": 2.191927356653774,
+      "candidate_v8_ratio": 4.979124531103056
+    },
+    {
+      "workload": "state_machine",
+      "baseline_turbojs_ms": 41.73865400068462,
+      "candidate_turbojs_ms": 1.9271610006690025,
+      "turbojs_improvement_percent": 95.38279073245296,
+      "candidate_v8_ratio": 0.6881683149315703
+    },
+    {
+      "workload": "config_templates",
+      "baseline_turbojs_ms": 159.55060900002718,
+      "candidate_turbojs_ms": 173.65007700026035,
+      "turbojs_improvement_percent": -8.836987892807587,
+      "candidate_v8_ratio": 16.36642809300239
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "baseline_turbojs_ms": 94.9617640003562,
+      "candidate_turbojs_ms": 97.78807399980724,
+      "turbojs_improvement_percent": -2.9762610553869235,
+      "candidate_v8_ratio": 16.141328457959922
+    }
+  ]
+}

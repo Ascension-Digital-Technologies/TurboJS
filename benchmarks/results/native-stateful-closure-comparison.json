@@ -1,0 +1,246 @@
+{
+  "description": "Same-host whole-engine A/B comparison for direct native stateful closure specialization",
+  "baseline": {
+    "geometric_mean_ratio": 11.581890153513529,
+    "median_ratio": 11.529362948169123,
+    "turbojs_total_ms": 479.3107830006629,
+    "node_total_ms": 43.07658699999999,
+    "total_ratio": 11.126944272550261
+  },
+  "candidate": {
+    "geometric_mean_ratio": 9.36969008419702,
+    "median_ratio": 10.139888646597342,
+    "turbojs_total_ms": 389.3047509994358,
+    "node_total_ms": 44.69900800000015,
+    "total_ratio": 8.709471829876728
+  },
+  "improvement": {
+    "geometric_mean_percent": 19.100509847655626,
+    "turbojs_total_time_percent": 18.77821972578127,
+    "total_ratio_percent": 21.726292353574053
+  },
+  "baseline_workloads": [
+    {
+      "workload": "numeric_simulation",
+      "turbojs_median_ms": 19.340918000787497,
+      "node_median_ms": 0.595601000000002,
+      "ratio": 32.472944136741596,
+      "run_ratios": [
+        32.472944136741596,
+        31.6561820269787,
+        33.73323355267176
+      ]
+    },
+    {
+      "workload": "order_processing",
+      "turbojs_median_ms": 37.99577399995178,
+      "node_median_ms": 11.976590000000002,
+      "ratio": 3.1725035256238856,
+      "run_ratios": [
+        3.2871195103749087,
+        2.885367676029152,
+        3.1725035256238856
+      ]
+    },
+    {
+      "workload": "ast_pipeline",
+      "turbojs_median_ms": 9.354100000113249,
+      "node_median_ms": 1.1185140000000047,
+      "ratio": 8.36297087038089,
+      "run_ratios": [
+        8.219787623273636,
+        8.36297087038089,
+        8.025037473020822
+      ]
+    },
+    {
+      "workload": "event_routing",
+      "turbojs_median_ms": 59.167426000349224,
+      "node_median_ms": 5.892888999999968,
+      "ratio": 10.040478617593093,
+      "run_ratios": [
+        9.257951751105766,
+        12.118673865916358,
+        10.040478617593093
+      ]
+    },
+    {
+      "workload": "graph_analytics",
+      "turbojs_median_ms": 15.161206999793649,
+      "node_median_ms": 1.1646119999999769,
+      "ratio": 13.018247278745152,
+      "run_ratios": [
+        18.64292178686492,
+        10.55686089524615,
+        12.569788908731026
+      ]
+    },
+    {
+      "workload": "text_indexing",
+      "turbojs_median_ms": 15.668438999913633,
+      "node_median_ms": 4.300148999999976,
+      "ratio": 3.643696764905988,
+      "run_ratios": [
+        3.0805392627610035,
+        4.015304585773692,
+        3.759888147160811
+      ]
+    },
+    {
+      "workload": "collection_transforms",
+      "turbojs_median_ms": 39.15798899997026,
+      "node_median_ms": 4.960338999999976,
+      "ratio": 7.89421630254917,
+      "run_ratios": [
+        7.89421630254917,
+        9.183281389125295,
+        7.425374663449574
+      ]
+    },
+    {
+      "workload": "state_machine",
+      "turbojs_median_ms": 61.41131899971515,
+      "node_median_ms": 1.7443190000000186,
+      "ratio": 35.20647255445506,
+      "run_ratios": [
+        34.232101958135004,
+        37.420239073344376,
+        36.31225324471541
+      ]
+    },
+    {
+      "workload": "config_templates",
+      "turbojs_median_ms": 126.28401600010693,
+      "node_median_ms": 6.207960000000014,
+      "ratio": 20.342272823940014,
+      "run_ratios": [
+        21.064228670554915,
+        22.287638773468984,
+        19.21530699769253
+      ]
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "turbojs_median_ms": 95.76959499996156,
+      "node_median_ms": 5.1156140000000505,
+      "ratio": 18.72103622360104,
+      "run_ratios": [
+        21.725482202992634,
+        18.40603185962145,
+        18.72103622360104
+      ]
+    }
+  ],
+  "candidate_workloads": [
+    {
+      "workload": "numeric_simulation",
+      "turbojs_median_ms": 17.64604699984193,
+      "node_median_ms": 0.5803020000000032,
+      "ratio": 30.408385633414724,
+      "run_ratios": [
+        30.22735747967543,
+        28.705875367186792,
+        32.89810930043466
+      ]
+    },
+    {
+      "workload": "order_processing",
+      "turbojs_median_ms": 36.29771600011736,
+      "node_median_ms": 11.558684999999997,
+      "ratio": 3.1402980529461066,
+      "run_ratios": [
+        3.3021494979977897,
+        2.7130268115377207,
+        3.294730672225264
+      ]
+    },
+    {
+      "workload": "ast_pipeline",
+      "turbojs_median_ms": 9.168472000397742,
+      "node_median_ms": 1.1080280000000187,
+      "ratio": 8.274585119146437,
+      "run_ratios": [
+        8.215341305296203,
+        9.110728205034238,
+        7.807760272869913
+      ]
+    },
+    {
+      "workload": "event_routing",
+      "turbojs_median_ms": 51.105984000489116,
+      "node_median_ms": 6.798113000000001,
+      "ratio": 7.517672036414974,
+      "run_ratios": [
+        7.517672036414974,
+        8.872075625630728,
+        6.438997736872959
+      ]
+    },
+    {
+      "workload": "graph_analytics",
+      "turbojs_median_ms": 13.693449999205768,
+      "node_median_ms": 1.0005290000000286,
+      "ratio": 13.686209994118487,
+      "run_ratios": [
+        13.749092576864532,
+        11.47813494014161,
+        13.65731228134132
+      ]
+    },
+    {
+      "workload": "text_indexing",
+      "turbojs_median_ms": 12.81655399966985,
+      "node_median_ms": 5.750445000000013,
+      "ratio": 2.2287934237558695,
+      "run_ratios": [
+        2.2287934237558695,
+        2.36799824402988,
+        2.2898343906721346
+      ]
+    },
+    {
+      "workload": "collection_transforms",
+      "turbojs_median_ms": 32.93327799998224,
+      "node_median_ms": 4.747847000000036,
+      "ratio": 6.9364657285674935,
+      "run_ratios": [
+        6.9364657285674935,
+        7.7598508649613605,
+        6.872321816112714
+      ]
+    },
+    {
+      "workload": "state_machine",
+      "turbojs_median_ms": 29.611969999969006,
+      "node_median_ms": 1.7094470000000115,
+      "ratio": 17.322543489192007,
+      "run_ratios": [
+        17.11563133757594,
+        17.628358950477498,
+        17.322543489192007
+      ]
+    },
+    {
+      "workload": "config_templates",
+      "turbojs_median_ms": 122.08126599993557,
+      "node_median_ms": 6.118749000000037,
+      "ratio": 19.951997704095206,
+      "run_ratios": [
+        21.34289732769604,
+        18.104571099730148,
+        19.914737473208422
+      ]
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "turbojs_median_ms": 63.950013999827206,
+      "node_median_ms": 5.326863000000003,
+      "ratio": 12.005192174048247,
+      "run_ratios": [
+        13.500100750457936,
+        13.665960792991639,
+        12.005192174048247
+      ]
+    }
+  ]
+}

@@ -510,6 +510,7 @@ static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                     }
                     for(i = 0; i < argc; i++) {
                         p->u.array.u.values[array_len + i] = js_dup(argv[i]);
+                        p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, argv[i]);
                     }
                     p->u.array.count = new_len;
                     p->prop[0].u.value = js_uint32(new_len);
@@ -1291,8 +1292,11 @@ static JSValue js_create_array(JSContext *ctx, int len, JSValueConst *tab)
             return JS_EXCEPTION;
         }
         p->u.array.count = len;
-        for(i = 0; i < len; i++)
+        p->array_element_kind = TURBOJS_ARRAY_EMPTY;
+        for(i = 0; i < len; i++) {
             p->u.array.u.values[i] = js_dup(tab[i]);
+            p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, tab[i]);
+        }
         /* update the 'length' field */
         set_value(ctx, &p->prop[0].u.value, js_int32(len));
     }

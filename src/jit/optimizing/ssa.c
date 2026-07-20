@@ -286,6 +286,10 @@ uint32_t TurboJS_SSAInferTypes(TurboJSSSAGraph *graph)
                     TURBOJS_SSA_TYPE_INT32 : TURBOJS_SSA_TYPE_INT64;
                 break;
             case TURBOJS_SSA_LESS_THAN_I64:
+            case TURBOJS_SSA_LESS_EQUAL_I64:
+            case TURBOJS_SSA_GREATER_THAN_I64:
+            case TURBOJS_SSA_GREATER_EQUAL_I64:
+            case TURBOJS_SSA_EQUAL_I64:
             case TURBOJS_SSA_BRANCH_TRUE:
             case TURBOJS_SSA_BRANCH_FALSE:
                 inferred = TURBOJS_SSA_TYPE_BOOLEAN;
@@ -293,9 +297,19 @@ uint32_t TurboJS_SSAInferTypes(TurboJSSSAGraph *graph)
             case TURBOJS_SSA_GUARD_INT32:
                 inferred = TURBOJS_SSA_TYPE_INT32;
                 break;
+            case TURBOJS_SSA_VIRTUAL_OBJECT:
+            case TURBOJS_SSA_VIRTUAL_FIELD_STORE:
+                inferred = TURBOJS_SSA_TYPE_REFERENCE;
+                break;
             case TURBOJS_SSA_ADD_I64:
             case TURBOJS_SSA_SUB_I64:
             case TURBOJS_SSA_MUL_I64:
+            case TURBOJS_SSA_AND_I64:
+            case TURBOJS_SSA_OR_I64:
+            case TURBOJS_SSA_XOR_I64:
+            case TURBOJS_SSA_SHL_I64:
+            case TURBOJS_SSA_SAR_I64:
+            case TURBOJS_SSA_SHR_I64:
                 if (v->left < graph->value_count && v->right < graph->value_count)
                     inferred = merge_numeric_type(graph->values[v->left].type,
                                                   graph->values[v->right].type);
@@ -327,7 +341,17 @@ static int cse_candidate(const TurboJSSSAValue *v)
     case TURBOJS_SSA_ADD_I64:
     case TURBOJS_SSA_SUB_I64:
     case TURBOJS_SSA_MUL_I64:
+    case TURBOJS_SSA_AND_I64:
+    case TURBOJS_SSA_OR_I64:
+    case TURBOJS_SSA_XOR_I64:
+    case TURBOJS_SSA_SHL_I64:
+    case TURBOJS_SSA_SAR_I64:
+    case TURBOJS_SSA_SHR_I64:
     case TURBOJS_SSA_LESS_THAN_I64:
+    case TURBOJS_SSA_LESS_EQUAL_I64:
+    case TURBOJS_SSA_GREATER_THAN_I64:
+    case TURBOJS_SSA_GREATER_EQUAL_I64:
+    case TURBOJS_SSA_EQUAL_I64:
         return 1;
     default:
         return 0;
@@ -369,6 +393,41 @@ static int same_property_cases(const TurboJSSSAValue *a,
             a->property_indices[i] != b->property_indices[i] ||
             a->property_generations[i] != b->property_generations[i] ||
             a->property_case_flags[i] != b->property_case_flags[i])
+            return 0;
+    }
+    return 1;
+}
+
+static int same_property_slot_identity(const TurboJSSSAValue *a,
+                                       const TurboJSSSAValue *b)
+{
+    uint8_t i;
+    if (a->property_case_count != b->property_case_count ||
+        a->metadata != b->metadata)
+        return 0;
+    for (i = 0; i < a->property_case_count; ++i) {
+        if (a->property_shapes[i] != b->property_shapes[i] ||
+            a->property_indices[i] != b->property_indices[i] ||
+            a->property_generations[i] != b->property_generations[i])
+            return 0;
+    }
+    return 1;
+}
+
+static int same_property_location(const TurboJSSSAValue *a,
+                                  const TurboJSSSAValue *b)
+{
+    uint8_t i;
+    if (a->property_case_count != b->property_case_count ||
+        a->metadata != b->metadata)
+        return 0;
+    for (i = 0; i < a->property_case_count; ++i) {
+        if (a->property_shapes[i] != b->property_shapes[i] ||
+            a->property_indices[i] != b->property_indices[i] ||
+            a->property_generations[i] != b->property_generations[i])
+            return 0;
+        if (!(a->property_case_flags[i] & TURBOJS_PROPERTY_FEEDBACK_WRITABLE) ||
+            !(b->property_case_flags[i] & TURBOJS_PROPERTY_FEEDBACK_LOAD))
             return 0;
     }
     return 1;
@@ -594,6 +653,214 @@ static int property_loop_store_free(const TurboJSSSAGraph *g,
         }
     }
     return 1;
+}
+
+static int property_find_reaching_store(const TurboJSSSAGraph *g,
+                                        uint32_t block_id,
+                                        const TurboJSSSAValue *load,
+                                        uint32_t *value_id)
+{
+    const TurboJSSSABlock *block;
+    uint32_t i, first, end;
+    if (!g || !load || !value_id || block_id >= g->block_count)
+        return 0;
+    block = &g->blocks[block_id];
+    first = block->first_value;
+    end = first + block->value_count;
+    if (end > g->value_count)
+        end = (uint32_t)g->value_count;
+    for (i = end; i-- > first;) {
+        const TurboJSSSAValue *candidate = &g->values[i];
+        if (candidate->removed)
+            continue;
+        if (candidate->opcode == TURBOJS_SSA_PHI &&
+            candidate->property_case_count &&
+            candidate->property_state_receiver == load->left &&
+            same_property_slot_identity(candidate, load)) {
+            *value_id = candidate->id;
+            return 1;
+        }
+        if (candidate->opcode != TURBOJS_SSA_PROPERTY_STORE)
+            continue;
+        if (candidate->left == load->left &&
+            candidate->right != TURBOJS_SSA_NO_VALUE &&
+            same_property_location(candidate, load)) {
+            *value_id = candidate->right;
+            return 1;
+        }
+        if (property_store_may_alias(candidate, load))
+            return 0;
+    }
+    return 0;
+}
+
+static uint32_t create_property_store_phis(TurboJSSSAGraph *g)
+{
+    size_t i;
+    uint32_t created = 0;
+    if (!g)
+        return 0;
+    for (i = 0; i < g->value_count; ++i) {
+        TurboJSSSAValue *load = &g->values[i];
+        TurboJSSSABlock *block;
+        uint32_t left_value, right_value;
+        TurboJSSSAType left_type, right_type;
+        if (load->removed || load->opcode != TURBOJS_SSA_PROPERTY_LOAD ||
+            load->block >= g->block_count || !load->property_case_count)
+            continue;
+        block = &g->blocks[load->block];
+        if (block->predecessor_count != 2 ||
+            !property_block_prefix_clear(g, load->block, load, load->id))
+            continue;
+        if (!property_find_reaching_store(g, block->predecessors[0], load,
+                                          &left_value) ||
+            !property_find_reaching_store(g, block->predecessors[1], load,
+                                          &right_value))
+            continue;
+        if (left_value >= g->value_count || right_value >= g->value_count)
+            continue;
+        if (left_value == right_value) {
+            replace_value_uses(g, load->id, left_value);
+            load->removed = 1;
+            created++;
+            continue;
+        }
+        left_type = g->values[left_value].type;
+        right_type = g->values[right_value].type;
+        if (load->left < g->value_count && g->values[load->left].use_count)
+            g->values[load->left].use_count--;
+        g->values[left_value].use_count++;
+        g->values[right_value].use_count++;
+        load->property_state_receiver = load->left;
+        load->opcode = TURBOJS_SSA_PHI;
+        load->type = left_type == right_type ? left_type : TURBOJS_SSA_TYPE_UNKNOWN;
+        load->left = left_value;
+        load->right = right_value;
+        created++;
+    }
+    return created;
+}
+
+static int property_store_is_plain_writable(const TurboJSSSAValue *store)
+{
+    uint8_t i;
+    if (!store || store->opcode != TURBOJS_SSA_PROPERTY_STORE ||
+        !store->property_case_count)
+        return 0;
+    for (i = 0; i < store->property_case_count; ++i) {
+        uint16_t flags = store->property_case_flags[i];
+        if (!(flags & TURBOJS_PROPERTY_FEEDBACK_OWN_DATA) ||
+            !(flags & TURBOJS_PROPERTY_FEEDBACK_WRITABLE) ||
+            !(flags & TURBOJS_PROPERTY_FEEDBACK_STORE))
+            return 0;
+    }
+    return 1;
+}
+
+static uint32_t eliminate_overwritten_property_stores(TurboJSSSAGraph *g)
+{
+    size_t i, j, k;
+    uint32_t removed = 0;
+    if (!g)
+        return 0;
+    for (i = 0; i < g->value_count; ++i) {
+        TurboJSSSAValue *store = &g->values[i];
+        if (store->removed || store->opcode != TURBOJS_SSA_PROPERTY_STORE ||
+            !property_store_is_plain_writable(store))
+            continue;
+        for (j = i + 1; j < g->value_count; ++j) {
+            TurboJSSSAValue *later = &g->values[j];
+            int blocked = 0;
+            if (later->removed)
+                continue;
+            if (later->block != store->block)
+                break;
+            if (later->opcode == TURBOJS_SSA_PROPERTY_LOAD &&
+                property_store_may_alias(store, later))
+                break;
+            if (later->opcode != TURBOJS_SSA_PROPERTY_STORE)
+                continue;
+            if (later->left == store->left && same_property_slot_identity(store, later) &&
+                property_store_is_plain_writable(later)) {
+                for (k = i + 1; k < j; ++k) {
+                    TurboJSSSAValue *between = &g->values[k];
+                    if (between->removed)
+                        continue;
+                    if (between->opcode == TURBOJS_SSA_PROPERTY_LOAD &&
+                        property_store_may_alias(store, between)) {
+                        blocked = 1;
+                        break;
+                    }
+                    if (between->opcode == TURBOJS_SSA_PROPERTY_STORE &&
+                        property_store_may_alias(between, store) &&
+                        !same_property_location(between, store)) {
+                        blocked = 1;
+                        break;
+                    }
+                }
+                if (!blocked) {
+                    if (store->left < g->value_count && g->values[store->left].use_count)
+                        g->values[store->left].use_count--;
+                    if (store->right < g->value_count && g->values[store->right].use_count)
+                        g->values[store->right].use_count--;
+                    store->removed = 1;
+                    removed++;
+                }
+                break;
+            }
+            if (property_store_may_alias(later, store))
+                break;
+        }
+    }
+    return removed;
+}
+
+static uint32_t forward_property_stores_to_loads(TurboJSSSAGraph *g)
+{
+    size_t i, j, k;
+    uint32_t forwarded = 0;
+    for (i = 0; i < g->value_count; ++i) {
+        TurboJSSSAValue *load = &g->values[i];
+        if (load->removed || load->opcode != TURBOJS_SSA_PROPERTY_LOAD ||
+            !load->property_case_count)
+            continue;
+        for (j = i; j-- > 0;) {
+            TurboJSSSAValue *store = &g->values[j];
+            int blocked = 0;
+            if (store->removed)
+                continue;
+            if (store->block != load->block) {
+                if (!block_dominates(g, store->block, load->block) ||
+                    !property_unique_path_clear(g, store->block, load->block, load))
+                    continue;
+            }
+            if (store->opcode != TURBOJS_SSA_PROPERTY_STORE)
+                continue;
+            if (store->left != load->left || store->right == TURBOJS_SSA_NO_VALUE ||
+                !same_property_location(store, load)) {
+                if (property_store_may_alias(store, load))
+                    break;
+                continue;
+            }
+            for (k = j + 1; k < i; ++k) {
+                TurboJSSSAValue *between = &g->values[k];
+                if (between->removed ||
+                    between->opcode != TURBOJS_SSA_PROPERTY_STORE)
+                    continue;
+                if (property_store_may_alias(between, load)) {
+                    blocked = 1;
+                    break;
+                }
+            }
+            if (blocked)
+                break;
+            replace_value_uses(g, (uint32_t)i, store->right);
+            load->removed = 1;
+            forwarded++;
+            break;
+        }
+    }
+    return forwarded;
 }
 
 static uint32_t eliminate_redundant_property_loads(TurboJSSSAGraph *g,
@@ -875,6 +1142,67 @@ static uint32_t eliminate_local_common_expressions(TurboJSSSAGraph *g)
     return eliminated;
 }
 
+static uint32_t scalarize_virtual_object_loads(TurboJSSSAGraph *g,
+                                               uint32_t *objects_scalarized)
+{
+    size_t i;
+    uint32_t forwarded = 0, objects = 0;
+    uint8_t *touched;
+    if (!g || !g->value_count) {
+        if (objects_scalarized) *objects_scalarized = 0;
+        return 0;
+    }
+    touched = (uint8_t *)calloc(g->value_count, 1);
+    if (!touched) {
+        if (objects_scalarized) *objects_scalarized = 0;
+        return 0;
+    }
+    for (i = 0; i < g->value_count; ++i) {
+        TurboJSSSAValue *load = &g->values[i];
+        uint32_t state, replacement = TURBOJS_SSA_NO_VALUE;
+        if (load->removed || load->opcode != TURBOJS_SSA_PROPERTY_LOAD)
+            continue;
+        state = load->left;
+        while (state < g->value_count) {
+            TurboJSSSAValue *v = &g->values[state];
+            if (v->removed) break;
+            if (v->opcode == TURBOJS_SSA_VIRTUAL_FIELD_STORE) {
+                if ((uint32_t)v->immediate == (uint32_t)load->immediate) {
+                    replacement = v->right;
+                    break;
+                }
+                state = v->left;
+                continue;
+            }
+            if (v->opcode == TURBOJS_SSA_VIRTUAL_OBJECT) break;
+            state = TURBOJS_SSA_NO_VALUE;
+            break;
+        }
+        if (replacement >= g->value_count)
+            continue;
+        replace_value_uses(g, (uint32_t)i, replacement);
+        load->removed = 1;
+        if (g->values[replacement].use_count < UINT32_MAX)
+            g->values[replacement].use_count++;
+        state = load->left;
+        while (state < g->value_count &&
+               g->values[state].opcode == TURBOJS_SSA_VIRTUAL_FIELD_STORE) {
+            touched[state] = 1;
+            state = g->values[state].left;
+        }
+        if (state < g->value_count &&
+            g->values[state].opcode == TURBOJS_SSA_VIRTUAL_OBJECT)
+            touched[state] = 1;
+        forwarded++;
+    }
+    for (i = 0; i < g->value_count; ++i)
+        if (touched[i] && g->values[i].opcode == TURBOJS_SSA_VIRTUAL_OBJECT)
+            objects++;
+    free(touched);
+    if (objects_scalarized) *objects_scalarized = objects;
+    return forwarded;
+}
+
 static int is_const(const TurboJSSSAValue *value)
 {
     return value->opcode == TURBOJS_SSA_CONSTANT_I64 && !value->removed;
@@ -886,6 +1214,18 @@ static int fold_binary(TurboJSSSAOpcode opcode, int64_t left, int64_t right,
     switch (opcode) {
     case TURBOJS_SSA_LESS_THAN_I64:
         *result = left < right;
+        return 1;
+    case TURBOJS_SSA_LESS_EQUAL_I64:
+        *result = left <= right;
+        return 1;
+    case TURBOJS_SSA_GREATER_THAN_I64:
+        *result = left > right;
+        return 1;
+    case TURBOJS_SSA_GREATER_EQUAL_I64:
+        *result = left >= right;
+        return 1;
+    case TURBOJS_SSA_EQUAL_I64:
+        *result = left == right;
         return 1;
     case TURBOJS_SSA_ADD_I64:
 #if defined(__GNUC__) || defined(__clang__)
@@ -905,6 +1245,18 @@ static int fold_binary(TurboJSSSAOpcode opcode, int64_t left, int64_t right,
         *result = left - right;
         return 1;
 #endif
+    case TURBOJS_SSA_AND_I64:
+        *result = left & right; return 1;
+    case TURBOJS_SSA_OR_I64:
+        *result = left | right; return 1;
+    case TURBOJS_SSA_XOR_I64:
+        *result = left ^ right; return 1;
+    case TURBOJS_SSA_SHL_I64:
+        *result = (int64_t)((uint64_t)left << ((uint64_t)right & 63u)); return 1;
+    case TURBOJS_SSA_SAR_I64:
+        *result = left >> ((uint64_t)right & 63u); return 1;
+    case TURBOJS_SSA_SHR_I64:
+        *result = (int64_t)((uint64_t)left >> ((uint64_t)right & 63u)); return 1;
     case TURBOJS_SSA_MUL_I64:
 #if defined(__GNUC__) || defined(__clang__)
         return !__builtin_mul_overflow(left, right, result);
@@ -963,7 +1315,17 @@ TurboJSSSAOptimizationStats TurboJS_SSAOptimize(TurboJSSSAGraph *graph)
         if ((value->opcode == TURBOJS_SSA_ADD_I64 ||
              value->opcode == TURBOJS_SSA_SUB_I64 ||
              value->opcode == TURBOJS_SSA_MUL_I64 ||
-             value->opcode == TURBOJS_SSA_LESS_THAN_I64) &&
+             value->opcode == TURBOJS_SSA_AND_I64 ||
+             value->opcode == TURBOJS_SSA_OR_I64 ||
+             value->opcode == TURBOJS_SSA_XOR_I64 ||
+             value->opcode == TURBOJS_SSA_SHL_I64 ||
+             value->opcode == TURBOJS_SSA_SAR_I64 ||
+             value->opcode == TURBOJS_SSA_SHR_I64 ||
+             value->opcode == TURBOJS_SSA_LESS_THAN_I64 ||
+             value->opcode == TURBOJS_SSA_LESS_EQUAL_I64 ||
+             value->opcode == TURBOJS_SSA_GREATER_THAN_I64 ||
+             value->opcode == TURBOJS_SSA_GREATER_EQUAL_I64 ||
+             value->opcode == TURBOJS_SSA_EQUAL_I64) &&
             value->left < graph->value_count &&
             value->right < graph->value_count &&
             is_const(&graph->values[value->left]) &&
@@ -1012,6 +1374,11 @@ TurboJSSSAOptimizationStats TurboJS_SSAOptimize(TurboJSSSAGraph *graph)
 
     stats.types_inferred += TurboJS_SSAInferTypes(graph);
     stats.expressions_eliminated = eliminate_local_common_expressions(graph);
+    stats.virtual_field_loads_forwarded = scalarize_virtual_object_loads(
+        graph, &stats.virtual_objects_scalarized);
+    stats.property_dead_stores_eliminated = eliminate_overwritten_property_stores(graph);
+    stats.property_store_phis = create_property_store_phis(graph);
+    stats.property_store_forwardings = forward_property_stores_to_loads(graph);
     stats.property_loads_eliminated = eliminate_redundant_property_loads(
         graph, &stats.property_dependency_reuses,
         &stats.property_cross_block_loads_eliminated,
@@ -1033,7 +1400,10 @@ TurboJSSSAOptimizationStats TurboJS_SSAOptimize(TurboJSSSAGraph *graph)
                                   &stats.element_loop_bounds_checks_eliminated);
     stats.guards_eliminated = eliminate_redundant_guards(graph);
     stats.values_removed += stats.expressions_eliminated +
-        stats.property_loads_eliminated + stats.element_bounds_checks_eliminated +
+        stats.property_loads_eliminated + stats.property_store_forwardings +
+        stats.property_store_phis + stats.property_dead_stores_eliminated +
+        stats.virtual_field_loads_forwarded +
+        stats.element_bounds_checks_eliminated +
         stats.guards_eliminated;
 
     mark_reachable(graph);

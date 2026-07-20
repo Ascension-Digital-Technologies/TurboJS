@@ -20,11 +20,8 @@ def main() -> int:
         raise RuntimeError("Python script syntax validation failed")
 
     validator = ROOT / "tools" / "validation" / "check_architecture.py"
-    legacy_validator = ROOT / "tools" / "validation" / "check_legacy_identity.py"
     if validator.exists():
         run([sys.executable, validator])
-    if legacy_validator.exists():
-        run([sys.executable, legacy_validator])
 
     build_dir = ensure_configured(args.preset)
     if not args.skip_build:

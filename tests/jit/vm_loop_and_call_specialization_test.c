@@ -68,6 +68,30 @@ static int test_leaf_call_specialization(void)
     return 0;
 }
 
+
+static int test_non_affine_leaf_call_specialization(void)
+{
+    const char *source =
+        "(function(){"
+        "function leaf(x){return (x^(x>>>16))|0;}"
+        "function mono(n){let s=0;for(let i=0;i<n;i++)s=(s+leaf(i))|0;return s;}"
+        "let total=0;for(let k=0;k<8;k++)total+=mono(1000+k);return total;})()";
+    TurboJSRuntimeJITStats stats;
+    if (eval_int64("non-affine-leaf-call-specialization.js", source,
+                   4024056, &stats))
+        return 1;
+    if (stats.osr_leaf_call_entries < 8 || stats.osr_leaf_call_iterations < 8000 ||
+        stats.osr_bailouts != 0) {
+        fprintf(stderr,
+                "non-affine leaf-call specialization inactive: entries=%" PRIu64
+                " iterations=%" PRIu64 " bailouts=%" PRIu64 "\n",
+                stats.osr_leaf_call_entries, stats.osr_leaf_call_iterations,
+                stats.osr_bailouts);
+        return 1;
+    }
+    return 0;
+}
+
 static int test_int32_mix_specialization(void)
 {
     const char *source =
@@ -128,12 +152,25 @@ static int test_negative_cache(void)
                 stats.osr_rejections_unsupported, stats.osr_negative_cache_hits);
         return 1;
     }
+    if (stats.osr_rejections_numeric < 1 ||
+        stats.osr_rejections_calls + stats.osr_rejections_properties +
+        stats.osr_rejections_indexed + stats.osr_rejections_numeric +
+        stats.osr_rejections_control_flow + stats.osr_rejections_other !=
+            stats.osr_rejections_unsupported) {
+        fprintf(stderr,
+                "OSR rejection classification mismatch: total=%" PRIu64
+                " numeric=%" PRIu64 "\n",
+                stats.osr_rejections_unsupported, stats.osr_rejections_numeric);
+        return 1;
+    }
     return 0;
 }
 
 int main(void)
 {
     if (test_leaf_call_specialization())
+        return 1;
+    if (test_non_affine_leaf_call_specialization())
         return 1;
     if (test_int32_mix_specialization())
         return 1;

@@ -292,6 +292,7 @@ int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
                             goto redo_prop_update;
                     }
                     if (flags & JS_PROP_HAS_VALUE) {
+                        p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, val);
                         set_value(ctx, &p->u.array.u.values[idx], js_dup(val));
                     }
                     return true;

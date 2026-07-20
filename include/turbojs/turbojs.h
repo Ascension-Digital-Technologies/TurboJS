@@ -1352,10 +1352,10 @@ JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 
 /* Version */
 
-#define TURBOJS_VERSION_MAJOR 0
-#define TURBOJS_VERSION_MINOR 16
+#define TURBOJS_VERSION_MAJOR 1
+#define TURBOJS_VERSION_MINOR 0
 #define TURBOJS_VERSION_PATCH 0
-#define TURBOJS_VERSION_SUFFIX "-rc.6"
+#define TURBOJS_VERSION_SUFFIX ""
 
 /* Legacy source-compatibility aliases. New code should use TURBOJS_* names. */
 

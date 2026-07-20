@@ -249,6 +249,15 @@ static void js_free_shape0(JSRuntime *rt, JSShape *sh)
     JSShapeProperty *pr;
 
     assert(JS_REF_COUNT(sh) == 0);
+    for (i = 0; i < countof(rt->shape_transition_source); i++) {
+        if (rt->shape_transition_source[i] == sh ||
+            rt->shape_transition_target[i] == sh) {
+            rt->shape_transition_source[i] = NULL;
+            rt->shape_transition_target[i] = NULL;
+            rt->shape_transition_atom[i] = JS_ATOM_NULL;
+            rt->shape_transition_flags[i] = 0;
+        }
+    }
     if (sh->is_hashed)
         js_shape_hash_unlink(rt, sh);
     if (sh->proto != NULL) {
@@ -287,7 +296,12 @@ static no_inline int resize_properties(JSContext *ctx, JSShape **psh,
     intptr_t h;
 
     sh = *psh;
-    new_size = max_int(count, sh->prop_size * 3 / 2);
+    /* Avoid the common 4 -> 6 -> 9 double growth for medium object
+       literals while keeping less slack than an eight-slot jump. */
+    if (sh->prop_size < 7)
+        new_size = max_int(count, 7);
+    else
+        new_size = max_int(count, sh->prop_size * 3 / 2);
     /* Reallocate prop array first to avoid crash or size inconsistency
        in case of memory allocation failure */
     if (p) {
@@ -494,7 +508,21 @@ static JSShape *find_hashed_shape_prop(JSRuntime *rt, JSShape *sh,
                                        JSAtom atom, int prop_flags)
 {
     JSShape *sh1;
-    uint32_t h, h1, i, n;
+    uint32_t h, h1, i, n, cache_index;
+
+    cache_index = ((((uintptr_t)sh >> 4) ^ (uintptr_t)atom ^
+                    (uint32_t)prop_flags * 0x9e3779b9u) &
+                   (countof(rt->shape_transition_source) - 1));
+    if (likely(rt->shape_transition_source[cache_index] == sh &&
+               rt->shape_transition_atom[cache_index] == atom &&
+               rt->shape_transition_flags[cache_index] == (uint8_t)prop_flags)) {
+        sh1 = rt->shape_transition_target[cache_index];
+        if (likely(sh1 != NULL)) {
+            rt->shape_transition_hits++;
+            return sh1;
+        }
+    }
+    rt->shape_transition_misses++;
 
     h = sh->hash;
     h = shape_hash(h, atom);
@@ -514,6 +542,11 @@ static JSShape *find_hashed_shape_prop(JSRuntime *rt, JSShape *sh,
             if (unlikely(get_shape_prop(sh1)[n].atom != atom) ||
                 unlikely(get_shape_prop(sh1)[n].flags != prop_flags))
                 goto next;
+            rt->shape_transition_source[cache_index] = sh;
+            rt->shape_transition_target[cache_index] = sh1;
+            rt->shape_transition_atom[cache_index] = atom;
+            rt->shape_transition_flags[cache_index] = (uint8_t)prop_flags;
+            rt->shape_transition_fills++;
             return sh1;
         }
     next: ;

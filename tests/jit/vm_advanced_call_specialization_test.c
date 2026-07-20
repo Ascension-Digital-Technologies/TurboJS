@@ -123,6 +123,43 @@ static int test_recursive_call_lowering(JSContext *ctx, JSRuntime *rt)
     return 0;
 }
 
+
+static int test_stateful_numeric_closure_leaf(JSContext *ctx)
+{
+    const char *source =
+        "(function(){function make(seed){let x=seed|0;return function(){"
+        "x^=x<<13;x^=x>>>17;x^=x<<5;return x|0;};}"
+        "const fast=make(123456789),ref=make(123456789);let a=0,b=0;"
+        "for(let i=0;i<200000;i++){a=(a+fast())|0;b=(b+ref())|0;}"
+        "return a===b;})()";
+    return eval_true(ctx, "stateful-numeric-closure-leaf.js", source);
+}
+
+static int test_branch_mutated_virtual_objects(JSContext *ctx)
+{
+    const char *source =
+        "(function(){function calc(x){const state={a:(x+1)|0,b:(x*2)|0};"
+        "if((x&1)===0)state.a=(state.a+7)|0;else state.b=(state.b-3)|0;"
+        "return(state.a+state.b)|0;}let got=0,want=0;"
+        "for(let r=0;r<16;r++){got=0;want=0;for(let i=0;i<4096;i++){"
+        "const x=i&1023;got=(got+calc(x))|0;"
+        "let a=(x+1)|0,b=(x*2)|0;if((x&1)===0)a=(a+7)|0;else b=(b-3)|0;"
+        "want=(want+a+b)|0;}if(got!==want)return false;}return true;})()";
+    return eval_true(ctx, "branch-mutated-virtual-object.js", source);
+}
+
+static int test_unsigned_remainder_fast_path(JSContext *ctx)
+{
+    const char *source =
+        "(function(){const a=(0xffffffff>>>0)%7;"
+        "const b=(0xfffffffe>>>0)%1000;"
+        "const c=(0x80000000>>>0)%31;"
+        "let x=0x9e3779b9|0,sum=0;for(let i=0;i<50000;i++){"
+        "x^=x<<13;x^=x>>>17;x^=x<<5;sum=(sum+((x>>>0)%97))|0;}"
+        "return a===3&&b===294&&c===2&&sum===2404323;})()";
+    return eval_true(ctx, "unsigned-remainder-fast-path.js", source);
+}
+
 int main(void)
 {
     JSRuntime *rt = JS_NewRuntime();
@@ -144,13 +181,16 @@ int main(void)
 
     if (test_polymorphic_leaf_calls(ctx, rt) ||
         test_captured_closure_calls(ctx, rt) ||
-        test_recursive_call_lowering(ctx, rt)) {
+        test_recursive_call_lowering(ctx, rt) ||
+        test_stateful_numeric_closure_leaf(ctx) ||
+        test_branch_mutated_virtual_objects(ctx) ||
+        test_unsigned_remainder_fast_path(ctx)) {
         JS_FreeContext(ctx);
         JS_FreeRuntime(rt);
         return 1;
     }
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
-    puts("Guarded call, closure, and recursion specialization passed");
+    puts("Guarded call, closure, recursion, and virtual-object specialization passed");
     return 0;
 }

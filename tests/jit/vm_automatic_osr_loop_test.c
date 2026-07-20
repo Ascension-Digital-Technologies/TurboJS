@@ -263,6 +263,58 @@ static int run_float64_typed_array_kernels(void) {
     JS_FreeContext(ctx);JS_FreeRuntime(rt);return 0;
 }
 
+
+static int run_float64_simulation_region(void) {
+    const char *source =
+        "(function(){const n=4096,a=new Float64Array(n),b=new Float64Array(n);"
+        "for(let i=0;i<n;i++){a[i]=(i%997)*0.0001+0.25;b[i]=(i%113)*0.00001+0.95;}"
+        "let total=0;for(let r=0;r<8;r++)for(let i=0;i<n;i++){"
+        "const v=(a[i]*b[i]+(i&15)*0.0003)/(1.00001+(r&3)*0.000001);"
+        "a[i]=v;total+=v;}return total+a[123];})()";
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx;
+    JSValue value;
+    TurboJSRuntimeJITStats stats;
+    double result = 0.0, expected = 0.0;
+    double a[4096], b[4096];
+    int r, i;
+    if (!rt) return 1;
+    ctx = JS_NewContext(rt);
+    if (!ctx) { JS_FreeRuntime(rt); return 1; }
+    for (i = 0; i < 4096; ++i) {
+        a[i] = (double)(i % 997) * 0.0001 + 0.25;
+        b[i] = (double)(i % 113) * 0.00001 + 0.95;
+    }
+    for (r = 0; r < 8; ++r) {
+        const double divisor = 1.00001 + (double)(r & 3) * 0.000001;
+        for (i = 0; i < 4096; ++i) {
+            const double v = (a[i] * b[i] + (double)(i & 15) * 0.0003) / divisor;
+            a[i] = v;
+            expected += v;
+        }
+    }
+    expected += a[123];
+    TurboJS_SetRuntimeJITThreshold(rt, 100);
+    value = JS_Eval(ctx, source, strlen(source), "float64-simulation-region.js", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(value) || JS_ToFloat64(ctx, &result, value) ||
+        fabs(result - expected) > 1e-9 * (1.0 + fabs(expected))) {
+        fprintf(stderr, "Float64 simulation region mismatch: got=%.17g expected=%.17g\n",
+                result, expected);
+        JS_FreeValue(ctx, value); JS_FreeContext(ctx); JS_FreeRuntime(rt); return 1;
+    }
+    JS_FreeValue(ctx, value);
+    stats = TurboJS_GetRuntimeJITStats(rt);
+    if (stats.typed_array_affine_sum_osr_entries < 8 ||
+        stats.typed_array_affine_sum_osr_elements < 32000 || stats.osr_bailouts != 0) {
+        fprintf(stderr, "Float64 simulation region inactive: entries=%llu elements=%llu bailouts=%llu\n",
+                (unsigned long long)stats.typed_array_affine_sum_osr_entries,
+                (unsigned long long)stats.typed_array_affine_sum_osr_elements,
+                (unsigned long long)stats.osr_bailouts);
+        JS_FreeContext(ctx); JS_FreeRuntime(rt); return 1;
+    }
+    JS_FreeContext(ctx); JS_FreeRuntime(rt); return 0;
+}
+
 static int run_dynamic_scalar_limit_sources(void) {
     if (run_source("(function kernel(n){let s=0;for(let i=0;i<n;i++)s=(s+i)|0;return s;})(1000000)",
                    1783293664LL)) return 1;
@@ -288,6 +340,7 @@ int main(void) {
     if (run_dense_array_transform_bailout_source()) return 1;
     if (run_dense_array_extended_kernels()) return 1;
     if (run_float64_typed_array_kernels()) return 1;
+    if (run_float64_simulation_region()) return 1;
     puts("Automatic integer, Float64, packed-array, and Float64Array JavaScript OSR passed");
     return 0;
 }

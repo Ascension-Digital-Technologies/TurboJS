@@ -1,0 +1,423 @@
+{
+  "benchmark": "whole-engine parity alternating A/B",
+  "date": "2026-07-19",
+  "baseline": "packed-array-kinds",
+  "candidate": "mutable-argument shift leaf inlining",
+  "methodology": {
+    "pairs": 3,
+    "ordering": "baseline then candidate per pair",
+    "same_host": true,
+    "comparison": "TurboJS total execution time; Node results retained for context only"
+  },
+  "summary": {
+    "baseline_median_total_ms": 629.7354649994522,
+    "candidate_median_total_ms": 618.9424230009317,
+    "improvement_percent": 1.7139009311679598
+  },
+  "baseline_runs": [
+    {
+      "file": "base-1.json",
+      "turbojs_total_ms": 640.7626680005342,
+      "geometric_mean_ratio_to_node": 15.810708293163017,
+      "workloads": [
+        {
+          "workload": "numeric_simulation",
+          "turbojs_median_ms": 25.980551999993622,
+          "node_median_ms": 0.5032949999999943,
+          "ratio": 51.620922123195975
+        },
+        {
+          "workload": "order_processing",
+          "turbojs_median_ms": 39.4076770003885,
+          "node_median_ms": 9.841740999999985,
+          "ratio": 4.004136768117406
+        },
+        {
+          "workload": "ast_pipeline",
+          "turbojs_median_ms": 10.66769199911505,
+          "node_median_ms": 1.2894560000000013,
+          "ratio": 8.27301745783884
+        },
+        {
+          "workload": "event_routing",
+          "turbojs_median_ms": 84.36718800012022,
+          "node_median_ms": 7.515607999999986,
+          "ratio": 11.225597183903202
+        },
+        {
+          "workload": "graph_analytics",
+          "turbojs_median_ms": 22.605209999717772,
+          "node_median_ms": 0.9364759999999706,
+          "ratio": 24.138589776693138
+        },
+        {
+          "workload": "text_indexing",
+          "turbojs_median_ms": 20.182740000076592,
+          "node_median_ms": 4.000147000000027,
+          "ratio": 5.045499577909626
+        },
+        {
+          "workload": "collection_transforms",
+          "turbojs_median_ms": 50.502145000733435,
+          "node_median_ms": 4.868829000000005,
+          "ratio": 10.372544404564913
+        },
+        {
+          "workload": "state_machine",
+          "turbojs_median_ms": 110.64822599943727,
+          "node_median_ms": 1.803652999999997,
+          "ratio": 61.346736872024415
+        },
+        {
+          "workload": "config_templates",
+          "turbojs_median_ms": 143.868088000454,
+          "node_median_ms": 6.346504999999979,
+          "ratio": 22.668868613584088
+        },
+        {
+          "workload": "allocation_lifecycle",
+          "turbojs_median_ms": 132.5331500004977,
+          "node_median_ms": 4.578697999999974,
+          "ratio": 28.945597635069717
+        }
+      ]
+    },
+    {
+      "file": "base-2.json",
+      "turbojs_total_ms": 614.7933219997212,
+      "geometric_mean_ratio_to_node": 15.642494468693643,
+      "workloads": [
+        {
+          "workload": "numeric_simulation",
+          "turbojs_median_ms": 25.751799000427127,
+          "node_median_ms": 0.5736860000000021,
+          "ratio": 44.888316954618084
+        },
+        {
+          "workload": "order_processing",
+          "turbojs_median_ms": 39.26224599964917,
+          "node_median_ms": 7.74302299999998,
+          "ratio": 5.07066116162244
+        },
+        {
+          "workload": "ast_pipeline",
+          "turbojs_median_ms": 10.89491599984467,
+          "node_median_ms": 1.2853899999999783,
+          "ratio": 8.475961381249935
+        },
+        {
+          "workload": "event_routing",
+          "turbojs_median_ms": 77.88368699979037,
+          "node_median_ms": 5.815187000000009,
+          "ratio": 13.393152619131637
+        },
+        {
+          "workload": "graph_analytics",
+          "turbojs_median_ms": 20.801296000368893,
+          "node_median_ms": 0.8971810000000175,
+          "ratio": 23.185172223184047
+        },
+        {
+          "workload": "text_indexing",
+          "turbojs_median_ms": 18.697906999848783,
+          "node_median_ms": 4.392285999999956,
+          "ratio": 4.256987591392949
+        },
+        {
+          "workload": "collection_transforms",
+          "turbojs_median_ms": 42.2577719995752,
+          "node_median_ms": 4.826665999999989,
+          "ratio": 8.755064468843566
+        },
+        {
+          "workload": "state_machine",
+          "turbojs_median_ms": 106.57505899947137,
+          "node_median_ms": 1.8005509999999845,
+          "ratio": 59.19024731844435
+        },
+        {
+          "workload": "config_templates",
+          "turbojs_median_ms": 140.35031000059098,
+          "node_median_ms": 6.336556999999971,
+          "ratio": 22.149301268905436
+        },
+        {
+          "workload": "allocation_lifecycle",
+          "turbojs_median_ms": 132.31833000015467,
+          "node_median_ms": 4.415824999999984,
+          "ratio": 29.96457740063412
+        }
+      ]
+    },
+    {
+      "file": "base-3.json",
+      "turbojs_total_ms": 629.7354649994522,
+      "geometric_mean_ratio_to_node": 15.984592605406325,
+      "workloads": [
+        {
+          "workload": "numeric_simulation",
+          "turbojs_median_ms": 26.51248800009489,
+          "node_median_ms": 0.5194860000000006,
+          "ratio": 51.03600097037237
+        },
+        {
+          "workload": "order_processing",
+          "turbojs_median_ms": 40.45151699986309,
+          "node_median_ms": 9.628746000000007,
+          "ratio": 4.2011199589087775
+        },
+        {
+          "workload": "ast_pipeline",
+          "turbojs_median_ms": 11.31309499964118,
+          "node_median_ms": 1.2408180000000186,
+          "ratio": 9.117449134072048
+        },
+        {
+          "workload": "event_routing",
+          "turbojs_median_ms": 78.21203900035471,
+          "node_median_ms": 5.350235999999995,
+          "ratio": 14.618427860070991
+        },
+        {
+          "workload": "graph_analytics",
+          "turbojs_median_ms": 20.250815000385046,
+          "node_median_ms": 0.9258120000000076,
+          "ratio": 21.873571524656064
+        },
+        {
+          "workload": "text_indexing",
+          "turbojs_median_ms": 19.482288000173867,
+          "node_median_ms": 4.097500999999966,
+          "ratio": 4.754675593776311
+        },
+        {
+          "workload": "collection_transforms",
+          "turbojs_median_ms": 42.61644099932164,
+          "node_median_ms": 4.826769000000013,
+          "ratio": 8.82918594184257
+        },
+        {
+          "workload": "state_machine",
+          "turbojs_median_ms": 107.50846199970692,
+          "node_median_ms": 1.820697999999993,
+          "ratio": 59.047937658912865
+        },
+        {
+          "workload": "config_templates",
+          "turbojs_median_ms": 146.52451799996197,
+          "node_median_ms": 6.707273000000043,
+          "ratio": 21.84561713828571
+        },
+        {
+          "workload": "allocation_lifecycle",
+          "turbojs_median_ms": 136.86380199994892,
+          "node_median_ms": 4.2542100000000005,
+          "ratio": 32.17137893990868
+        }
+      ]
+    }
+  ],
+  "candidate_runs": [
+    {
+      "file": "cand-1.json",
+      "turbojs_total_ms": 618.9424230009317,
+      "geometric_mean_ratio_to_node": 15.629846654928112,
+      "workloads": [
+        {
+          "workload": "numeric_simulation",
+          "turbojs_median_ms": 26.110550000332296,
+          "node_median_ms": 0.5511870000000059,
+          "ratio": 47.37149098279172
+        },
+        {
+          "workload": "order_processing",
+          "turbojs_median_ms": 39.48301099985838,
+          "node_median_ms": 9.613360999999998,
+          "ratio": 4.107097507298269
+        },
+        {
+          "workload": "ast_pipeline",
+          "turbojs_median_ms": 10.725719000212848,
+          "node_median_ms": 1.2580339999999808,
+          "ratio": 8.525778317766461
+        },
+        {
+          "workload": "event_routing",
+          "turbojs_median_ms": 80.12369799986482,
+          "node_median_ms": 4.356754999999993,
+          "ratio": 18.390682514822373
+        },
+        {
+          "workload": "graph_analytics",
+          "turbojs_median_ms": 20.786450000479817,
+          "node_median_ms": 0.9147110000000112,
+          "ratio": 22.724609194029114
+        },
+        {
+          "workload": "text_indexing",
+          "turbojs_median_ms": 18.677356000058353,
+          "node_median_ms": 4.591967000000011,
+          "ratio": 4.067397696903813
+        },
+        {
+          "workload": "collection_transforms",
+          "turbojs_median_ms": 43.2565250005573,
+          "node_median_ms": 5.292282999999998,
+          "ratio": 8.173509428833894
+        },
+        {
+          "workload": "state_machine",
+          "turbojs_median_ms": 106.17489099968225,
+          "node_median_ms": 1.7933979999999679,
+          "ratio": 59.20319471733779
+        },
+        {
+          "workload": "config_templates",
+          "turbojs_median_ms": 141.12848399952054,
+          "node_median_ms": 6.515936000000011,
+          "ratio": 21.65897332317572
+        },
+        {
+          "workload": "allocation_lifecycle",
+          "turbojs_median_ms": 132.47573900036514,
+          "node_median_ms": 4.499639999999999,
+          "ratio": 29.441408423866164
+        }
+      ]
+    },
+    {
+      "file": "cand-2.json",
+      "turbojs_total_ms": 618.1501819984987,
+      "geometric_mean_ratio_to_node": 15.224838467264975,
+      "workloads": [
+        {
+          "workload": "numeric_simulation",
+          "turbojs_median_ms": 26.005793999880552,
+          "node_median_ms": 0.5463740000000001,
+          "ratio": 47.59705622866488
+        },
+        {
+          "workload": "order_processing",
+          "turbojs_median_ms": 39.63932500034571,
+          "node_median_ms": 9.671720000000008,
+          "ratio": 4.098477313274751
+        },
+        {
+          "workload": "ast_pipeline",
+          "turbojs_median_ms": 10.957247999496758,
+          "node_median_ms": 1.2836830000000248,
+          "ratio": 8.53578959875339
+        },
+        {
+          "workload": "event_routing",
+          "turbojs_median_ms": 78.66265199985355,
+          "node_median_ms": 5.912864000000013,
+          "ratio": 13.303646422419554
+        },
+        {
+          "workload": "graph_analytics",
+          "turbojs_median_ms": 19.774864999577403,
+          "node_median_ms": 1.0301739999999882,
+          "ratio": 19.195655296656323
+        },
+        {
+          "workload": "text_indexing",
+          "turbojs_median_ms": 19.004947000183165,
+          "node_median_ms": 4.684812000000022,
+          "ratio": 4.056714976008232
+        },
+        {
+          "workload": "collection_transforms",
+          "turbojs_median_ms": 44.498406999744475,
+          "node_median_ms": 4.554802000000052,
+          "ratio": 9.76955902797618
+        },
+        {
+          "workload": "state_machine",
+          "turbojs_median_ms": 105.49405599944293,
+          "node_median_ms": 1.8031839999999875,
+          "ratio": 58.50432124477794
+        },
+        {
+          "workload": "config_templates",
+          "turbojs_median_ms": 141.53653299994767,
+          "node_median_ms": 6.418981000000031,
+          "ratio": 22.04968872784434
+        },
+        {
+          "workload": "allocation_lifecycle",
+          "turbojs_median_ms": 132.57635500002652,
+          "node_median_ms": 4.307239000000038,
+          "ratio": 30.779892873375577
+        }
+      ]
+    },
+    {
+      "file": "cand-3.json",
+      "turbojs_total_ms": 621.8679920015857,
+      "geometric_mean_ratio_to_node": 14.916604304287047,
+      "workloads": [
+        {
+          "workload": "numeric_simulation",
+          "turbojs_median_ms": 26.143935999833047,
+          "node_median_ms": 0.5515739999999951,
+          "ratio": 47.39878239335661
+        },
+        {
+          "workload": "order_processing",
+          "turbojs_median_ms": 39.880347000434995,
+          "node_median_ms": 9.680239,
+          "ratio": 4.1197688404630295
+        },
+        {
+          "workload": "ast_pipeline",
+          "turbojs_median_ms": 10.999112999998033,
+          "node_median_ms": 1.2805329999999913,
+          "ratio": 8.589480317959872
+        },
+        {
+          "workload": "event_routing",
+          "turbojs_median_ms": 78.82036400027573,
+          "node_median_ms": 7.078096000000016,
+          "ratio": 11.135814490263419
+        },
+        {
+          "workload": "graph_analytics",
+          "turbojs_median_ms": 20.28361300006509,
+          "node_median_ms": 1.1285849999999868,
+          "ratio": 17.9726055193586
+        },
+        {
+          "workload": "text_indexing",
+          "turbojs_median_ms": 18.98318300023675,
+          "node_median_ms": 3.687657999999999,
+          "ratio": 5.147761262090127
+        },
+        {
+          "workload": "collection_transforms",
+          "turbojs_median_ms": 42.58794300071895,
+          "node_median_ms": 5.300027,
+          "ratio": 8.035420008373345
+        },
+        {
+          "workload": "state_machine",
+          "turbojs_median_ms": 107.22324800025672,
+          "node_median_ms": 1.796387999999979,
+          "ratio": 59.68824552393913
+        },
+        {
+          "workload": "config_templates",
+          "turbojs_median_ms": 142.77165399957448,
+          "node_median_ms": 6.297641999999996,
+          "ratio": 22.67065260292258
+        },
+        {
+          "workload": "allocation_lifecycle",
+          "turbojs_median_ms": 134.17459100019187,
+          "node_median_ms": 4.622642999999982,
+          "ratio": 29.025514408141053
+        }
+      ]
+    }
+  ]
+}

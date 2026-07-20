@@ -1,0 +1,96 @@
+{
+  "methodology": {
+    "classification": "direct same-host whole-engine A/B plus Node/V8 parity snapshot",
+    "baseline": "seven-slot property-growth build",
+    "candidate": "lightweight same-realm native-builtin dispatch",
+    "independent_process_runs_per_build": 3,
+    "validation": "exact checksum equality for every workload and process run"
+  },
+  "baseline_aggregate": {
+    "geometric_mean_ratio": 7.655677306286086,
+    "median_ratio": 7.170186584656179,
+    "turbojs_total_ms": 559.9746979996562,
+    "node_total_ms": 64.99068899999997,
+    "total_ratio": 8.616229595591092
+  },
+  "candidate_aggregate": {
+    "geometric_mean_ratio": 7.520214335111976,
+    "median_ratio": 8.50393649040103,
+    "turbojs_total_ms": 532.0772139998153,
+    "node_total_ms": 63.533622999999935,
+    "total_ratio": 8.374734335547272
+  },
+  "turbojs_total_improvement_percent": 4.981918665164054,
+  "workloads": [
+    {
+      "workload": "numeric_simulation",
+      "baseline_turbojs_ms": 3.4084259998053312,
+      "candidate_turbojs_ms": 3.2626040000468493,
+      "turbojs_improvement_percent": 4.278279762177921,
+      "candidate_v8_ratio": 3.705735898828793
+    },
+    {
+      "workload": "order_processing",
+      "baseline_turbojs_ms": 56.822355000302196,
+      "candidate_turbojs_ms": 54.17814199998975,
+      "turbojs_improvement_percent": 4.653473092233479,
+      "candidate_v8_ratio": 3.1249559186139506
+    },
+    {
+      "workload": "ast_pipeline",
+      "baseline_turbojs_ms": 14.656897000037134,
+      "candidate_turbojs_ms": 14.805180000141263,
+      "turbojs_improvement_percent": -1.0116943586610019,
+      "candidate_v8_ratio": 7.513020126398565
+    },
+    {
+      "workload": "event_routing",
+      "baseline_turbojs_ms": 69.02266700007021,
+      "candidate_turbojs_ms": 69.42741800006479,
+      "turbojs_improvement_percent": -0.5864030145258865,
+      "candidate_v8_ratio": 9.494852854403494
+    },
+    {
+      "workload": "graph_analytics",
+      "baseline_turbojs_ms": 17.811402999795973,
+      "candidate_turbojs_ms": 15.717668000608683,
+      "turbojs_improvement_percent": 11.755025694557999,
+      "candidate_v8_ratio": 9.685380546879314
+    },
+    {
+      "workload": "text_indexing",
+      "baseline_turbojs_ms": 22.547395000234246,
+      "candidate_turbojs_ms": 22.295377999544144,
+      "turbojs_improvement_percent": 1.1177211411228853,
+      "candidate_v8_ratio": 3.446404183711342
+    },
+    {
+      "workload": "collection_transforms",
+      "baseline_turbojs_ms": 49.465278000570834,
+      "candidate_turbojs_ms": 47.51284500025213,
+      "turbojs_improvement_percent": 3.947077787162492,
+      "candidate_v8_ratio": 5.594097362107428
+    },
+    {
+      "workload": "state_machine",
+      "baseline_turbojs_ms": 42.09999099932611,
+      "candidate_turbojs_ms": 41.643671999685466,
+      "turbojs_improvement_percent": 1.0838933425138924,
+      "candidate_v8_ratio": 14.475737722929853
+    },
+    {
+      "workload": "config_templates",
+      "baseline_turbojs_ms": 179.18675599992275,
+      "candidate_turbojs_ms": 161.59184299968183,
+      "turbojs_improvement_percent": 9.819315552678741,
+      "candidate_v8_ratio": 15.276896186802146
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "baseline_turbojs_ms": 104.95352999959141,
+      "candidate_turbojs_ms": 101.64246399980038,
+      "turbojs_improvement_percent": 3.1547924112737475,
+      "candidate_v8_ratio": 16.958689307258528
+    }
+  ]
+}

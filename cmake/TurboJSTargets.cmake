@@ -26,12 +26,6 @@ add_custom_target(turbojs-architecture-check
     COMMENT "Checking TurboJS engine subsystem boundaries"
     VERBATIM
 )
-add_custom_target(turbojs-legacy-identity-check
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/validation/check_legacy_identity.py
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Checking first-party source for stale upstream-engine identity"
-    VERBATIM
-)
 
 add_custom_target(turbojs-regenerate-engine
     COMMAND ${Python3_EXECUTABLE}

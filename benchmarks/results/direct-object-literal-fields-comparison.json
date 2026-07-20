@@ -1,0 +1,80 @@
+{
+  "change": "direct object-literal field definition",
+  "baseline": {
+    "geometric_mean_ratio": 7.082232081557544,
+    "median_ratio": 6.990415424967422,
+    "turbojs_total_ms": 535.454981001094,
+    "node_total_ms": 68.36118199999979,
+    "total_ratio": 7.832734387200849
+  },
+  "candidate": {
+    "geometric_mean_ratio": 7.589283859503019,
+    "median_ratio": 7.320258479294032,
+    "turbojs_total_ms": 516.2548879990354,
+    "node_total_ms": 60.5330009999997,
+    "total_ratio": 8.528486601862642
+  },
+  "turbojs_total_improvement_percent": 3.5857529919997773,
+  "workloads": [
+    {
+      "workload": "numeric_simulation",
+      "baseline_turbojs_ms": 3.3366560004651546,
+      "candidate_turbojs_ms": 3.3154360000044107,
+      "improvement_percent": 0.6359660827422928
+    },
+    {
+      "workload": "order_processing",
+      "baseline_turbojs_ms": 57.4386800006032,
+      "candidate_turbojs_ms": 52.645460000261664,
+      "improvement_percent": 8.344934111109792
+    },
+    {
+      "workload": "ast_pipeline",
+      "baseline_turbojs_ms": 14.631404000334442,
+      "candidate_turbojs_ms": 14.351083000190556,
+      "improvement_percent": 1.9158858585100795
+    },
+    {
+      "workload": "event_routing",
+      "baseline_turbojs_ms": 66.7807360002771,
+      "candidate_turbojs_ms": 64.05695999972522,
+      "improvement_percent": 4.078685207273812
+    },
+    {
+      "workload": "graph_analytics",
+      "baseline_turbojs_ms": 15.828304000198841,
+      "candidate_turbojs_ms": 15.930216999724507,
+      "improvement_percent": -0.6438655684423674
+    },
+    {
+      "workload": "text_indexing",
+      "baseline_turbojs_ms": 22.535073000006378,
+      "candidate_turbojs_ms": 21.977458999492228,
+      "improvement_percent": 2.4744273094388993
+    },
+    {
+      "workload": "collection_transforms",
+      "baseline_turbojs_ms": 47.868532999418676,
+      "candidate_turbojs_ms": 43.93753100000322,
+      "improvement_percent": 8.212079529287426
+    },
+    {
+      "workload": "state_machine",
+      "baseline_turbojs_ms": 41.47422800026834,
+      "candidate_turbojs_ms": 41.133990000002086,
+      "improvement_percent": 0.820360056524868
+    },
+    {
+      "workload": "config_templates",
+      "baseline_turbojs_ms": 163.04286400042474,
+      "candidate_turbojs_ms": 164.24873999971896,
+      "improvement_percent": -0.7396067326755742
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "baseline_turbojs_ms": 102.51850299909711,
+      "candidate_turbojs_ms": 94.65801199991256,
+      "improvement_percent": 7.667387612218428
+    }
+  ]
+}

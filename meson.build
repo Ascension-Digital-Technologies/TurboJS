@@ -1,7 +1,7 @@
 project(
   'turbojs',
   'c',
-  version: '0.16.0',
+  version: '1.0.0',
   default_options: ['c_std=gnu11', 'warning_level=2', 'buildtype=release', 'default_library=static'],
   license: 'MIT',
   license_files: 'LICENSE',

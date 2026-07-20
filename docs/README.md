@@ -1,39 +1,60 @@
 # TurboJS Documentation
 
-## Start here
+This portal is the authoritative map of the TurboJS 1.0.0 codebase. It explains not only how to build and use the engine, but where each subsystem lives, which contracts connect them, how changes should be validated, and which interfaces are stable.
 
-- [Project status](project/STATUS.md)
-- [Completion roadmap](project/ROADMAP.md)
-- [Architecture overview](architecture/overview.md)
-- [Building](development/building.md)
-- [Repository layout](development/repository-layout.md)
-- [Testing](development/testing.md)
-- [Benchmark methodology](performance/BENCHMARKING.md)
+## Choose a path
 
-## Architecture
+### I want to embed TurboJS
 
-The `architecture/` directory documents stable subsystems and design contracts. Phase-specific experiments should not be added there unless they become part of the supported architecture.
+1. [Embedding guide](embedding/EMBEDDING_GUIDE.md)
+2. [Stable embedding API](embedding/README.md)
+3. [Public API and ABI policy](api/PUBLIC_API_AND_ABI.md)
+4. [`examples/embed-stable`](../examples/embed-stable/)
 
-## Development
+### I want to understand the engine
 
-The `development/` directory contains build, testing, contribution, debugging, and release workflow documentation.
+1. [Engine architecture](architecture/ENGINE_ARCHITECTURE.md)
+2. [Execution pipeline](architecture/execution-pipeline.md)
+3. [Source and subsystem map](architecture/SUBSYSTEM_MAP.md)
+4. [Runtime and VM](subsystems/RUNTIME_AND_VM.md)
+5. [JIT pipeline](subsystems/JIT_PIPELINE.md)
 
-## Performance
+### I want to contribute
 
-- `performance/BENCHMARKING.md` defines the current benchmark methodology.
-- `performance/history/` stores historical phase reports for traceability.
-- Historical reports are evidence, not current product claims.
+1. [Developer guide](development/DEVELOPER_GUIDE.md)
+2. [First contribution](development/FIRST_CONTRIBUTION.md)
+3. [Building](development/building.md)
+4. [Testing](development/testing.md)
+5. [Debugging](development/DEBUGGING.md)
+6. [Coding and ownership conventions](development/CODEBASE_CONVENTIONS.md)
 
-## Project records
+### I want to evaluate performance
 
-The `project/` directory contains the current status and historical audit material.
+1. [Performance model](performance/PERFORMANCE_MODEL.md)
+2. [Benchmark methodology](performance/BENCHMARKING.md)
+3. [Retained results](../benchmarks/results/)
+4. [Benchmark tools](../tools/benchmarks/)
 
-## Platform notes
+## Architecture and subsystem guides
 
-Platform-specific implementation and troubleshooting notes live under `platforms/`.
+- [Engine architecture](architecture/ENGINE_ARCHITECTURE.md)
+- [Subsystem map](architecture/SUBSYSTEM_MAP.md)
+- [Frontend and bytecode](subsystems/FRONTEND_AND_BYTECODE.md)
+- [Runtime and VM](subsystems/RUNTIME_AND_VM.md)
+- [Object model](subsystems/OBJECT_MODEL.md)
+- [Memory and garbage collection](subsystems/MEMORY_AND_GC.md)
+- [JIT pipeline](subsystems/JIT_PIPELINE.md)
+- [Native backends](subsystems/NATIVE_BACKENDS.md)
+- [AOT and serialization](subsystems/AOT_AND_SERIALIZATION.md)
+- [Built-ins, modules, RegExp, Unicode, and numeric support](subsystems/LANGUAGE_SERVICES.md)
 
-## Specifications
+## Stability labels
 
-Versioned file formats, ABI contracts, and artifact specifications live under `specifications/`.
+- **Stable public API:** installed headers and the versioned embedding table.
+- **Versioned artifact:** bytecode, TJIR, and TJM formats whose readers validate format versions.
+- **Internal contract:** interfaces below `src/internal/` or private JIT headers; these can change without compatibility guarantees.
+- **Historical evidence:** benchmark and audit records retained for reproducibility; they do not define current behavior.
 
-- [Execution pipeline](architecture/execution-pipeline.md)
+## Documentation rules
+
+Every architectural change should update the nearest subsystem guide and any affected contract document. New public API requires examples, tests, ABI notes, and release notes. Performance claims require retained inputs, environment details, correctness checks, raw output, and a reproducible runner.

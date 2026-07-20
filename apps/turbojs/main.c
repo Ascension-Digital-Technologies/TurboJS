@@ -832,6 +832,12 @@ start:
                    "\"osr_rejections_unsupported\":%" PRIu64 ","
                    "\"osr_rejections_allocation\":%" PRIu64 ","
                    "\"osr_rejections_backend\":%" PRIu64 ","
+                   "\"osr_rejections_calls\":%" PRIu64 ","
+                   "\"osr_rejections_properties\":%" PRIu64 ","
+                   "\"osr_rejections_indexed\":%" PRIu64 ","
+                   "\"osr_rejections_numeric\":%" PRIu64 ","
+                   "\"osr_rejections_control_flow\":%" PRIu64 ","
+                   "\"osr_rejections_other\":%" PRIu64 ","
                    "\"osr_leaf_call_entries\":%" PRIu64 ","
                    "\"osr_leaf_call_iterations\":%" PRIu64 ","
                    "\"osr_int32_mix_entries\":%" PRIu64 ","
@@ -873,7 +879,10 @@ start:
                    stats.osr_frame_captures, stats.osr_entries,
                    stats.osr_bailouts, stats.osr_negative_cache_hits,
                    stats.osr_rejections_unsupported, stats.osr_rejections_allocation,
-                   stats.osr_rejections_backend, stats.osr_leaf_call_entries,
+                   stats.osr_rejections_backend, stats.osr_rejections_calls,
+                   stats.osr_rejections_properties, stats.osr_rejections_indexed,
+                   stats.osr_rejections_numeric, stats.osr_rejections_control_flow,
+                   stats.osr_rejections_other, stats.osr_leaf_call_entries,
                    stats.osr_leaf_call_iterations, stats.osr_int32_mix_entries,
                    stats.osr_int32_mix_iterations, stats.holey_array_osr_entries,
                    stats.holey_array_osr_elements,

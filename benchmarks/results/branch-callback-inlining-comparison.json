@@ -1,0 +1,22 @@
+{
+  "benchmark": "whole-engine parity suite",
+  "method": "three alternating same-host baseline/candidate process pairs; identical harness and workload checksums",
+  "baseline_ms": [
+    623.9002009993419,
+    643.4316329993308,
+    696.6135919988155
+  ],
+  "candidate_ms": [
+    634.9443800002337,
+    633.4322349997237,
+    635.0949300024658
+  ],
+  "baseline_median_ms": 643.4316329993308,
+  "candidate_median_ms": 634.9443800002337,
+  "improvement_percent": 1.3190605751747266,
+  "validation": {
+    "build_targets": 293,
+    "native_tests": "97/97",
+    "checksums": "exact"
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "methodology": "Independent five-run whole-engine parity snapshots on the same host; exact checksums. Direct alternating run exceeded the execution window, so no paired claim is made.",
+  "baseline": {
+    "geometric_mean_ratio": 8.14359399881565,
+    "median_ratio": 7.915611040233671,
+    "turbojs_total_ms": 557.0000479998998,
+    "node_total_ms": 59.869412999999994,
+    "total_ratio": 9.303582916369999
+  },
+  "candidate": {
+    "geometric_mean_ratio": 7.7958377696287435,
+    "median_ratio": 7.624735785037178,
+    "turbojs_total_ms": 553.2377180005424,
+    "node_total_ms": 61.809316999999865,
+    "total_ratio": 8.950717219550308
+  },
+  "turbojs_total_improvement_pct": 0.6754631373672949,
+  "workloads": [
+    {
+      "workload": "numeric_simulation",
+      "baseline_turbojs_ms": 3.328054000157863,
+      "candidate_turbojs_ms": 3.2917949999682605,
+      "improvement_pct": 1.0894955486864837
+    },
+    {
+      "workload": "order_processing",
+      "baseline_turbojs_ms": 53.86541899992153,
+      "candidate_turbojs_ms": 53.930992000270635,
+      "improvement_pct": -0.12173487474255038
+    },
+    {
+      "workload": "ast_pipeline",
+      "baseline_turbojs_ms": 14.491739000193775,
+      "candidate_turbojs_ms": 14.77671100012958,
+      "improvement_pct": -1.9664444683415518
+    },
+    {
+      "workload": "event_routing",
+      "baseline_turbojs_ms": 66.88805099995807,
+      "candidate_turbojs_ms": 66.7895370000042,
+      "improvement_pct": 0.1472819113146648
+    },
+    {
+      "workload": "graph_analytics",
+      "baseline_turbojs_ms": 17.698618000373244,
+      "candidate_turbojs_ms": 17.268783000297844,
+      "improvement_pct": 2.428635953758283
+    },
+    {
+      "workload": "text_indexing",
+      "baseline_turbojs_ms": 22.6069469996728,
+      "candidate_turbojs_ms": 23.002373999916017,
+      "improvement_pct": -1.74913932539825
+    },
+    {
+      "workload": "collection_transforms",
+      "baseline_turbojs_ms": 45.95955500006676,
+      "candidate_turbojs_ms": 47.439725999720395,
+      "improvement_pct": -3.2205947156178674
+    },
+    {
+      "workload": "state_machine",
+      "baseline_turbojs_ms": 42.11334199970588,
+      "candidate_turbojs_ms": 41.69363399967551,
+      "improvement_pct": 0.996615277014348
+    },
+    {
+      "workload": "config_templates",
+      "baseline_turbojs_ms": 184.25096599990502,
+      "candidate_turbojs_ms": 179.56687000021338,
+      "improvement_pct": 2.5422368747277284
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "baseline_turbojs_ms": 105.7973569999449,
+      "candidate_turbojs_ms": 105.47729600034654,
+      "improvement_pct": 0.30252267984210685
+    }
+  ]
+}

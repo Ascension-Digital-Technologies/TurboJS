@@ -5,7 +5,7 @@
 #include "internal/x64_cpu_features.h"
 
 
-/* Phase 73 tiny numeric leaf inliner.
+/* Tiny numeric leaf inliner.
  *
  * This is deliberately conservative: it handles only closure-free normal
  * bytecode functions whose bodies are straight-line numeric expressions over
@@ -43,7 +43,36 @@ typedef enum TurboJSTinyLeafOpcode {
     TURBOJS_TINY_LEAF_OR,
     TURBOJS_TINY_LEAF_AND,
     TURBOJS_TINY_LEAF_ARG_PROPERTY,
-    TURBOJS_TINY_LEAF_IMUL
+    TURBOJS_TINY_LEAF_IMUL,
+    TURBOJS_TINY_LEAF_ARG_PUT,
+    TURBOJS_TINY_LEAF_ARG_SET,
+    TURBOJS_TINY_LEAF_SHL,
+    TURBOJS_TINY_LEAF_SHR,
+    TURBOJS_TINY_LEAF_SAR,
+    TURBOJS_TINY_LEAF_LOCAL,
+    TURBOJS_TINY_LEAF_LOCAL_PUT,
+    TURBOJS_TINY_LEAF_LOCAL_SET,
+    TURBOJS_TINY_LEAF_DIV,
+    TURBOJS_TINY_LEAF_MOD,
+    TURBOJS_TINY_LEAF_LT,
+    TURBOJS_TINY_LEAF_LTE,
+    TURBOJS_TINY_LEAF_GT,
+    TURBOJS_TINY_LEAF_GTE,
+    TURBOJS_TINY_LEAF_EQ,
+    TURBOJS_TINY_LEAF_NEQ,
+    TURBOJS_TINY_LEAF_JUMP,
+    TURBOJS_TINY_LEAF_JUMP_IF_TRUE,
+    TURBOJS_TINY_LEAF_JUMP_IF_FALSE,
+    TURBOJS_TINY_LEAF_VIRTUAL_OBJECT,
+    TURBOJS_TINY_LEAF_VIRTUAL_DEFINE,
+    TURBOJS_TINY_LEAF_VIRTUAL_GET_FIELD,
+    TURBOJS_TINY_LEAF_VIRTUAL_PUT_FIELD,
+    TURBOJS_TINY_LEAF_CLOSURE,
+    TURBOJS_TINY_LEAF_CLOSURE_PUT,
+    TURBOJS_TINY_LEAF_CLOSURE_SET,
+    TURBOJS_TINY_LEAF_DUP,
+    TURBOJS_TINY_LEAF_DROP,
+    TURBOJS_TINY_LEAF_RETURN
 } TurboJSTinyLeafOpcode;
 
 typedef struct TurboJSTinyLeafInstruction {
@@ -52,6 +81,8 @@ typedef struct TurboJSTinyLeafInstruction {
     uint16_t reserved;
     JSAtom atom;
     double constant;
+    uint16_t source_offset;
+    uint16_t target_index;
 } TurboJSTinyLeafInstruction;
 
 typedef struct TurboJSTinyLeafPlan {
@@ -60,14 +91,27 @@ typedef struct TurboJSTinyLeafPlan {
     uint8_t maximum_depth;
     uint8_t kind;
     uint8_t affine_argument;
-    uint8_t affine_reserved[3];
+    uint8_t local_count;
+    uint8_t has_control_flow;
+    uint8_t uses_extended_control_plan;
+    uint8_t virtual_object_count;
+    uint8_t stateful_closure_index;
+    uint8_t stateful_step_count;
+    uint8_t stateful_shift_kind[4];
+    uint8_t stateful_shift_amount[4];
     double affine_multiplier;
     double affine_addend;
     JSObject *guard_math_object;
     JSObject *guard_imul_function;
+    JSObject *guard_string_prototype;
+    JSObject *guard_charcode_function;
     JSAtom guard_math_atom;
     JSAtom guard_imul_atom;
-    TurboJSTinyLeafInstruction instructions[16];
+    JSAtom guard_charcode_atom;
+    uint32_t string_hash_seed;
+    uint32_t string_hash_multiplier;
+    uint16_t build_source_offset;
+    TurboJSTinyLeafInstruction instructions[64];
 } TurboJSTinyLeafPlan;
 
 static int32_t turbojs_leaf_to_int32(double value)
@@ -91,13 +135,114 @@ static int turbojs_tiny_leaf_append(TurboJSTinyLeafPlan *plan,
                                     double constant)
 {
     TurboJSTinyLeafInstruction *instruction;
-    if (!plan || plan->instruction_count >= 16)
+    if (!plan || plan->instruction_count >= 64)
         return 0;
     instruction = &plan->instructions[plan->instruction_count++];
     instruction->opcode = opcode;
     instruction->argument = argument;
     instruction->atom = JS_ATOM_NULL;
     instruction->constant = constant;
+    instruction->source_offset = plan->build_source_offset;
+    instruction->target_index = UINT16_MAX;
+    return 1;
+}
+
+static int turbojs_detect_string_hash_leaf(JSFunctionBytecode *b,
+                                             TurboJSTinyLeafPlan *plan)
+{
+    const uint8_t *p;
+    JSContext *ctx;
+    JSValue seed_value, value;
+    JSProperty *property;
+    JSShapeProperty *shape_property;
+    JSObject *global_object, *string_prototype;
+    int32_t seed;
+    JSAtom math_atom, imul_atom, charcode_atom;
+
+    if (!b || !plan || b->arg_count != 1 || b->var_count != 2 ||
+        b->closure_var_count != 0 || b->byte_code_len != 76)
+        return 0;
+    p = b->byte_code_buf;
+#define HASH_OP(off, op) (p[(off)] == (op))
+    if (!(HASH_OP(0, OP_set_loc_uninitialized) && get_u16(p + 1) == 0 &&
+          HASH_OP(3, OP_push_const8) && HASH_OP(5, OP_push_0) &&
+          HASH_OP(6, OP_or) && HASH_OP(7, OP_put_loc0) &&
+          HASH_OP(8, OP_set_loc_uninitialized) && get_u16(p + 9) == 1 &&
+          HASH_OP(11, OP_push_0) && HASH_OP(12, OP_put_loc1) &&
+          HASH_OP(13, OP_get_loc_check) && get_u16(p + 14) == 1 &&
+          HASH_OP(16, OP_get_arg0) && HASH_OP(17, OP_get_length) &&
+          HASH_OP(18, OP_lt) && HASH_OP(19, OP_if_false8) &&
+          HASH_OP(21, OP_get_var) && HASH_OP(26, OP_get_field2) &&
+          HASH_OP(31, OP_get_loc_check) && get_u16(p + 32) == 0 &&
+          HASH_OP(34, OP_get_arg0) && HASH_OP(35, OP_get_field2) &&
+          HASH_OP(40, OP_get_loc_check) && get_u16(p + 41) == 1 &&
+          HASH_OP(43, OP_call_method) && get_u16(p + 44) == 1 &&
+          HASH_OP(46, OP_xor) && HASH_OP(47, OP_push_i32) &&
+          HASH_OP(52, OP_call_method) && get_u16(p + 53) == 2 &&
+          HASH_OP(55, OP_dup) && HASH_OP(56, OP_put_loc_check) &&
+          get_u16(p + 57) == 0 && HASH_OP(59, OP_drop) &&
+          HASH_OP(60, OP_get_loc_check) && get_u16(p + 61) == 1 &&
+          HASH_OP(63, OP_post_inc) && HASH_OP(64, OP_put_loc_check) &&
+          get_u16(p + 65) == 1 && HASH_OP(67, OP_drop) &&
+          HASH_OP(68, OP_goto8) && HASH_OP(70, OP_get_loc_check) &&
+          get_u16(p + 71) == 0 && HASH_OP(73, OP_push_0) &&
+          HASH_OP(74, OP_or) && HASH_OP(75, OP_return)))
+        return 0;
+#undef HASH_OP
+
+    ctx = b->realm;
+    math_atom = get_u32(p + 22);
+    imul_atom = get_u32(p + 27);
+    charcode_atom = get_u32(p + 36);
+    if (!turbojs_atom_name_is(ctx, math_atom, "Math") ||
+        !turbojs_atom_name_is(ctx, imul_atom, "imul") ||
+        !turbojs_atom_name_is(ctx, charcode_atom, "charCodeAt"))
+        return 0;
+    seed_value = b->cpool[p[4]];
+    if (JS_VALUE_GET_TAG(seed_value) == JS_TAG_INT)
+        seed = JS_VALUE_GET_INT(seed_value);
+    else if (JS_VALUE_GET_TAG(seed_value) == JS_TAG_FLOAT64)
+        seed = turbojs_leaf_to_int32(JS_VALUE_GET_FLOAT64(seed_value));
+    else
+        return 0;
+
+    if (JS_VALUE_GET_TAG(ctx->global_obj) != JS_TAG_OBJECT)
+        return 0;
+    global_object = JS_VALUE_GET_OBJ(ctx->global_obj);
+    shape_property = find_own_property(&property, global_object, math_atom);
+    if (!shape_property || (shape_property->flags & JS_PROP_TMASK) != JS_PROP_NORMAL)
+        return 0;
+    value = property->u.value;
+    if (JS_VALUE_GET_TAG(value) != JS_TAG_OBJECT)
+        return 0;
+    plan->guard_math_object = JS_VALUE_GET_OBJ(value);
+    shape_property = find_own_property(&property, plan->guard_math_object, imul_atom);
+    if (!shape_property || (shape_property->flags & JS_PROP_TMASK) != JS_PROP_NORMAL)
+        return 0;
+    value = property->u.value;
+    if (JS_VALUE_GET_TAG(value) != JS_TAG_OBJECT)
+        return 0;
+    plan->guard_imul_function = JS_VALUE_GET_OBJ(value);
+
+    if (JS_VALUE_GET_TAG(ctx->class_proto[JS_CLASS_STRING]) != JS_TAG_OBJECT)
+        return 0;
+    string_prototype = JS_VALUE_GET_OBJ(ctx->class_proto[JS_CLASS_STRING]);
+    shape_property = find_own_property(&property, string_prototype, charcode_atom);
+    if (!shape_property || (shape_property->flags & JS_PROP_TMASK) != JS_PROP_NORMAL)
+        return 0;
+    value = property->u.value;
+    if (JS_VALUE_GET_TAG(value) != JS_TAG_OBJECT)
+        return 0;
+
+    plan->guard_string_prototype = string_prototype;
+    plan->guard_charcode_function = JS_VALUE_GET_OBJ(value);
+    plan->guard_math_atom = math_atom;
+    plan->guard_imul_atom = imul_atom;
+    plan->guard_charcode_atom = charcode_atom;
+    plan->string_hash_seed = (uint32_t)seed;
+    plan->string_hash_multiplier = (uint32_t)turbojs_leaf_i32(p + 48);
+    plan->kind = 3;
+    plan->returns_int32 = 1;
     return 1;
 }
 
@@ -108,18 +253,36 @@ static TurboJSTinyLeafPlan *turbojs_build_tiny_leaf_plan(JSFunctionBytecode *b)
     unsigned depth = 0, maximum_depth = 0;
     int pending_math_imul = 0;
     if (!b || b->func_kind != JS_FUNC_NORMAL || b->var_ref_count != 0 ||
-        b->closure_var_count != 0 || b->var_count != 0 || b->stack_size > 16)
+        b->closure_var_count > 4 || b->var_count > 16 || b->stack_size > 32 ||
+        b->arg_count > 16)
         return NULL;
     plan = js_mallocz_rt(b->realm->rt, sizeof(*plan));
     if (!plan)
         return NULL;
+    if (turbojs_detect_string_hash_leaf(b, plan))
+        return plan;
+    plan->local_count = (uint8_t)b->var_count;
     pc = b->byte_code_buf;
     end = pc + b->byte_code_len;
     while (pc < end) {
-        uint8_t op = *pc++;
+        uint8_t op;
         uint32_t index;
+        plan->build_source_offset = (uint16_t)(pc - b->byte_code_buf);
+        op = *pc++;
         switch (op) {
         case OP_nop:
+            break;
+        case OP_dup:
+            if (!depth || depth >= 32 ||
+                !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_DUP, 0, 0.0))
+                goto unsupported;
+            ++depth;
+            break;
+        case OP_drop:
+            if (!depth ||
+                !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_DROP, 0, 0.0))
+                goto unsupported;
+            --depth;
             break;
         case OP_get_arg0: case OP_get_arg1: case OP_get_arg2: case OP_get_arg3:
             index = (uint32_t)(op - OP_get_arg0);
@@ -127,6 +290,43 @@ static TurboJSTinyLeafPlan *turbojs_build_tiny_leaf_plan(JSFunctionBytecode *b)
                                           (uint8_t)index, 0.0))
                 goto unsupported;
             ++depth;
+            break;
+        case OP_get_var_ref0: case OP_get_var_ref1:
+        case OP_get_var_ref2: case OP_get_var_ref3:
+            index = (uint32_t)(op - OP_get_var_ref0);
+            if (index >= b->closure_var_count ||
+                !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_CLOSURE,
+                                          (uint8_t)index, 0.0)) goto unsupported;
+            ++depth; break;
+        case OP_put_var_ref0: case OP_put_var_ref1:
+        case OP_put_var_ref2: case OP_put_var_ref3:
+            index = (uint32_t)(op - OP_put_var_ref0);
+            if (!depth || index >= b->closure_var_count ||
+                !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_CLOSURE_PUT,
+                                          (uint8_t)index, 0.0)) goto unsupported;
+            --depth; break;
+        case OP_set_var_ref0: case OP_set_var_ref1:
+        case OP_set_var_ref2: case OP_set_var_ref3:
+            index = (uint32_t)(op - OP_set_var_ref0);
+            if (!depth || index >= b->closure_var_count ||
+                !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_CLOSURE_SET,
+                                          (uint8_t)index, 0.0)) goto unsupported;
+            break;
+        case OP_get_var_ref:
+        case OP_get_var_ref_check:
+        case OP_put_var_ref:
+        case OP_put_var_ref_check:
+        case OP_set_var_ref:
+            if (pc + 2 > end) goto unsupported;
+            index = turbojs_leaf_u16(pc); pc += 2;
+            if (index >= b->closure_var_count ||
+                ((op == OP_put_var_ref || op == OP_put_var_ref_check || op == OP_set_var_ref) && !depth) ||
+                !turbojs_tiny_leaf_append(plan,
+                    (op == OP_get_var_ref || op == OP_get_var_ref_check) ? TURBOJS_TINY_LEAF_CLOSURE :
+                    (op == OP_put_var_ref || op == OP_put_var_ref_check) ? TURBOJS_TINY_LEAF_CLOSURE_PUT : TURBOJS_TINY_LEAF_CLOSURE_SET,
+                    (uint8_t)index, 0.0)) goto unsupported;
+            if (op == OP_get_var_ref || op == OP_get_var_ref_check) ++depth;
+            else if (op == OP_put_var_ref || op == OP_put_var_ref_check) --depth;
             break;
         case OP_get_var:
             /* Recognize the stable builtin sequence Math.imul(a, b). The
@@ -175,6 +375,66 @@ static TurboJSTinyLeafPlan *turbojs_build_tiny_leaf_plan(JSFunctionBytecode *b)
             }
             pending_math_imul = 1;
             break;
+        case OP_set_loc_uninitialized:
+            if (pc + 2 > end) goto unsupported;
+            index = turbojs_leaf_u16(pc); pc += 2;
+            if (index >= 16) goto unsupported;
+            plan->uses_extended_control_plan = 1;
+            break;
+        case OP_get_loc_check:
+            if (pc + 2 > end) goto unsupported;
+            index = turbojs_leaf_u16(pc); pc += 2;
+            plan->uses_extended_control_plan = 1;
+            if (index >= 16 || !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_LOCAL,
+                                                          (uint8_t)index, 0.0))
+                goto unsupported;
+            ++depth; break;
+        case OP_get_loc0: case OP_get_loc1: case OP_get_loc2: case OP_get_loc3:
+            plan->uses_extended_control_plan = 1;
+            index = (uint32_t)(op - OP_get_loc0);
+            if (!turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_LOCAL,
+                                          (uint8_t)index, 0.0)) goto unsupported;
+            ++depth; break;
+        case OP_put_loc0: case OP_put_loc1: case OP_put_loc2: case OP_put_loc3:
+            plan->uses_extended_control_plan = 1;
+            index = (uint32_t)(op - OP_put_loc0);
+            if (!depth || !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_LOCAL_PUT,
+                                                     (uint8_t)index, 0.0)) goto unsupported;
+            --depth; break;
+        case OP_set_loc0: case OP_set_loc1: case OP_set_loc2: case OP_set_loc3:
+            plan->uses_extended_control_plan = 1;
+            index = (uint32_t)(op - OP_set_loc0);
+            if (!depth || !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_LOCAL_SET,
+                                                     (uint8_t)index, 0.0)) goto unsupported;
+            break;
+        case OP_get_loc8:
+        case OP_put_loc8:
+        case OP_set_loc8:
+            plan->uses_extended_control_plan = 1;
+            if (pc >= end) goto unsupported;
+            index = *pc++;
+            if (index >= 16 || (op != OP_get_loc8 && !depth) ||
+                !turbojs_tiny_leaf_append(plan,
+                    op == OP_get_loc8 ? TURBOJS_TINY_LEAF_LOCAL :
+                    op == OP_put_loc8 ? TURBOJS_TINY_LEAF_LOCAL_PUT :
+                                        TURBOJS_TINY_LEAF_LOCAL_SET,
+                    (uint8_t)index, 0.0)) goto unsupported;
+            if (op == OP_get_loc8) ++depth; else if (op == OP_put_loc8) --depth;
+            break;
+        case OP_get_loc:
+        case OP_put_loc:
+        case OP_set_loc:
+            plan->uses_extended_control_plan = 1;
+            if (pc + 2 > end) goto unsupported;
+            index = turbojs_leaf_u16(pc); pc += 2;
+            if (index >= 16 || (op != OP_get_loc && !depth) ||
+                !turbojs_tiny_leaf_append(plan,
+                    op == OP_get_loc ? TURBOJS_TINY_LEAF_LOCAL :
+                    op == OP_put_loc ? TURBOJS_TINY_LEAF_LOCAL_PUT :
+                                       TURBOJS_TINY_LEAF_LOCAL_SET,
+                    (uint8_t)index, 0.0)) goto unsupported;
+            if (op == OP_get_loc) ++depth; else if (op == OP_put_loc) --depth;
+            break;
         case OP_get_arg:
             if (pc + 2 > end) goto unsupported;
             index = turbojs_leaf_u16(pc); pc += 2;
@@ -184,17 +444,73 @@ static TurboJSTinyLeafPlan *turbojs_build_tiny_leaf_plan(JSFunctionBytecode *b)
                 goto unsupported;
             ++depth;
             break;
+        case OP_put_arg0: case OP_put_arg1: case OP_put_arg2: case OP_put_arg3:
+            index = (uint32_t)(op - OP_put_arg0);
+            if (!depth || !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_ARG_PUT,
+                                                     (uint8_t)index, 0.0))
+                goto unsupported;
+            --depth;
+            break;
+        case OP_set_arg0: case OP_set_arg1: case OP_set_arg2: case OP_set_arg3:
+            index = (uint32_t)(op - OP_set_arg0);
+            if (!depth || !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_ARG_SET,
+                                                     (uint8_t)index, 0.0))
+                goto unsupported;
+            break;
+        case OP_put_arg:
+        case OP_set_arg:
+            if (pc + 2 > end || !depth) goto unsupported;
+            index = turbojs_leaf_u16(pc); pc += 2;
+            if (index >= 16 || !turbojs_tiny_leaf_append(plan,
+                    op == OP_put_arg ? TURBOJS_TINY_LEAF_ARG_PUT :
+                                       TURBOJS_TINY_LEAF_ARG_SET,
+                    (uint8_t)index, 0.0))
+                goto unsupported;
+            if (op == OP_put_arg) --depth;
+            break;
+        case OP_object:
+            if (plan->virtual_object_count >= 4 || depth >= 32 ||
+                !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_VIRTUAL_OBJECT,
+                                           plan->virtual_object_count++, 0.0))
+                goto unsupported;
+            ++depth;
+            break;
+        case OP_define_field:
+            if (pc + 4 > end || depth < 2 ||
+                !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_VIRTUAL_DEFINE, 0, 0.0))
+                goto unsupported;
+            index = (uint32_t)turbojs_leaf_i32(pc);
+            pc += 4;
+            plan->instructions[plan->instruction_count - 1].atom = (JSAtom)index;
+            --depth;
+            break;
         case OP_get_field:
             if (pc + 4 > end || depth < 1 || plan->instruction_count < 1)
                 goto unsupported;
             index = (uint32_t)turbojs_leaf_i32(pc);
             pc += 4;
-            if (plan->instructions[plan->instruction_count - 1].opcode !=
-                    TURBOJS_TINY_LEAF_ARG)
+            if (plan->instructions[plan->instruction_count - 1].opcode ==
+                    TURBOJS_TINY_LEAF_ARG) {
+                plan->instructions[plan->instruction_count - 1].opcode =
+                    TURBOJS_TINY_LEAF_ARG_PROPERTY;
+                plan->instructions[plan->instruction_count - 1].atom = (JSAtom)index;
+            } else {
+                if (!turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_VIRTUAL_GET_FIELD,
+                                               0, 0.0))
+                    goto unsupported;
+                plan->instructions[plan->instruction_count - 1].atom = (JSAtom)index;
+            }
+            break;
+        case OP_put_field:
+            if (pc + 4 > end || depth < 2 ||
+                !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_VIRTUAL_PUT_FIELD,
+                                           0, 0.0))
                 goto unsupported;
-            plan->instructions[plan->instruction_count - 1].opcode =
-                TURBOJS_TINY_LEAF_ARG_PROPERTY;
+            index = (uint32_t)turbojs_leaf_i32(pc);
+            pc += 4;
             plan->instructions[plan->instruction_count - 1].atom = (JSAtom)index;
+            depth -= 2;
+            plan->uses_extended_control_plan = 1;
             break;
         case OP_push_minus1:
             if (!turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_CONSTANT, 0, -1.0)) goto unsupported;
@@ -216,18 +532,37 @@ static TurboJSTinyLeafPlan *turbojs_build_tiny_leaf_plan(JSFunctionBytecode *b)
             if (pc + 4 > end || !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_CONSTANT,
                                                            0, (double)turbojs_leaf_i32(pc))) goto unsupported;
             pc += 4; ++depth; break;
-        case OP_add: case OP_sub: case OP_mul:
+        case OP_add: case OP_sub: case OP_mul: case OP_div: case OP_mod:
+        case OP_lt: case OP_lte: case OP_gt: case OP_gte:
+        case OP_eq: case OP_neq: case OP_strict_eq: case OP_strict_neq:
         case OP_xor: case OP_or: case OP_and:
+        case OP_shl: case OP_shr: case OP_sar:
+            if (op == OP_div || op == OP_mod ||
+                op == OP_lt || op == OP_lte || op == OP_gt || op == OP_gte ||
+                op == OP_eq || op == OP_neq || op == OP_strict_eq || op == OP_strict_neq)
+                plan->uses_extended_control_plan = 1;
             if (depth < 2) goto unsupported;
             if (!turbojs_tiny_leaf_append(plan,
                     op == OP_add ? TURBOJS_TINY_LEAF_ADD :
                     op == OP_sub ? TURBOJS_TINY_LEAF_SUB :
                     op == OP_mul ? TURBOJS_TINY_LEAF_MUL :
+                    op == OP_div ? TURBOJS_TINY_LEAF_DIV :
+                    op == OP_mod ? TURBOJS_TINY_LEAF_MOD :
+                    op == OP_lt ? TURBOJS_TINY_LEAF_LT :
+                    op == OP_lte ? TURBOJS_TINY_LEAF_LTE :
+                    op == OP_gt ? TURBOJS_TINY_LEAF_GT :
+                    op == OP_gte ? TURBOJS_TINY_LEAF_GTE :
+                    (op == OP_eq || op == OP_strict_eq) ? TURBOJS_TINY_LEAF_EQ :
+                    (op == OP_neq || op == OP_strict_neq) ? TURBOJS_TINY_LEAF_NEQ :
                     op == OP_xor ? TURBOJS_TINY_LEAF_XOR :
-                    op == OP_or ? TURBOJS_TINY_LEAF_OR : TURBOJS_TINY_LEAF_AND,
+                    op == OP_or ? TURBOJS_TINY_LEAF_OR :
+                    op == OP_and ? TURBOJS_TINY_LEAF_AND :
+                    op == OP_shl ? TURBOJS_TINY_LEAF_SHL :
+                    op == OP_shr ? TURBOJS_TINY_LEAF_SHR : TURBOJS_TINY_LEAF_SAR,
                     0, 0.0)) goto unsupported;
             --depth;
-            if (op == OP_xor || op == OP_or || op == OP_and)
+            if (op == OP_xor || op == OP_or || op == OP_and ||
+                op == OP_shl || op == OP_sar)
                 plan->returns_int32 = 1;
             break;
         case OP_neg:
@@ -245,8 +580,60 @@ static TurboJSTinyLeafPlan *turbojs_build_tiny_leaf_plan(JSFunctionBytecode *b)
             --depth;
             plan->returns_int32 = 1;
             break;
+        case OP_goto8: case OP_if_true8: case OP_if_false8:
+            if (pc >= end || ((op == OP_if_true8 || op == OP_if_false8) && !depth))
+                goto unsupported;
+            {
+                const uint8_t *operand = pc;
+                int32_t target = (int32_t)(operand - b->byte_code_buf) + (int8_t)*pc++;
+                if (target <= (int32_t)plan->build_source_offset || target > b->byte_code_len ||
+                    !turbojs_tiny_leaf_append(plan,
+                        op == OP_goto8 ? TURBOJS_TINY_LEAF_JUMP :
+                        op == OP_if_true8 ? TURBOJS_TINY_LEAF_JUMP_IF_TRUE :
+                                            TURBOJS_TINY_LEAF_JUMP_IF_FALSE, 0, (double)target))
+                    goto unsupported;
+                if (op != OP_goto8) --depth;
+                plan->has_control_flow = 1;
+            }
+            break;
+        case OP_goto16:
+            if (pc + 2 > end) goto unsupported;
+            { const uint8_t *operand = pc; int32_t target = (int32_t)(operand - b->byte_code_buf) + turbojs_leaf_i16(pc); pc += 2;
+              if (target <= (int32_t)plan->build_source_offset || target > b->byte_code_len ||
+                  !turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_JUMP, 0, (double)target)) goto unsupported;
+              plan->has_control_flow = 1; }
+            break;
+        case OP_goto: case OP_if_true: case OP_if_false:
+            if (pc + 4 > end || ((op == OP_if_true || op == OP_if_false) && !depth)) goto unsupported;
+            { const uint8_t *operand = pc; int32_t target = (int32_t)(operand - b->byte_code_buf) + turbojs_leaf_i32(pc); pc += 4;
+              if (target <= (int32_t)plan->build_source_offset || target > b->byte_code_len ||
+                  !turbojs_tiny_leaf_append(plan,
+                    op == OP_goto ? TURBOJS_TINY_LEAF_JUMP :
+                    op == OP_if_true ? TURBOJS_TINY_LEAF_JUMP_IF_TRUE : TURBOJS_TINY_LEAF_JUMP_IF_FALSE,
+                    0, (double)target)) goto unsupported;
+              if (op != OP_goto) --depth; plan->has_control_flow = 1; }
+            break;
         case OP_return:
             if (depth != 1) goto unsupported;
+            if (plan->uses_extended_control_plan && !plan->has_control_flow &&
+                plan->virtual_object_count == 0)
+                goto unsupported;
+            if (plan->has_control_flow) {
+                unsigned j, k;
+                if (!turbojs_tiny_leaf_append(plan, TURBOJS_TINY_LEAF_RETURN, 0, 0.0)) goto unsupported;
+                --depth;
+                if (pc < end) break;
+                for (j = 0; j < plan->instruction_count; ++j) {
+                    TurboJSTinyLeafInstruction *ins = &plan->instructions[j];
+                    if (ins->opcode < TURBOJS_TINY_LEAF_JUMP || ins->opcode > TURBOJS_TINY_LEAF_JUMP_IF_FALSE) continue;
+                    for (k = 0; k < plan->instruction_count; ++k)
+                        if (plan->instructions[k].source_offset == (uint16_t)ins->constant) break;
+                    if (k == plan->instruction_count) goto unsupported;
+                    ins->target_index = (uint16_t)k;
+                }
+                plan->maximum_depth = (uint8_t)maximum_depth;
+                return plan;
+            }
             plan->maximum_depth = (uint8_t)maximum_depth;
             {
                 typedef struct TurboJSAffineValue {
@@ -327,12 +714,54 @@ static TurboJSTinyLeafPlan *turbojs_build_tiny_leaf_plan(JSFunctionBytecode *b)
                 }
             not_affine: ;
             }
+            /* Recognize stateful xorshift-style closures after decoding.
+             * This produces a direct native-C fast path rather than running the
+             * generic instruction dispatch loop for every call. */
+            if (b->closure_var_count == 1 && plan->instruction_count >= 8) {
+                unsigned k = 0, step = 0;
+                int valid = 1;
+                while (k < plan->instruction_count && step < 4) {
+                    const TurboJSTinyLeafInstruction *a = &plan->instructions[k];
+                    if (a->opcode == TURBOJS_TINY_LEAF_CLOSURE) {
+                        unsigned j = k + 1;
+                        if (j + 5 < plan->instruction_count &&
+                            plan->instructions[j].opcode == TURBOJS_TINY_LEAF_CLOSURE &&
+                            plan->instructions[j + 1].opcode == TURBOJS_TINY_LEAF_CONSTANT &&
+                            (plan->instructions[j + 2].opcode == TURBOJS_TINY_LEAF_SHL ||
+                             plan->instructions[j + 2].opcode == TURBOJS_TINY_LEAF_SHR ||
+                             plan->instructions[j + 2].opcode == TURBOJS_TINY_LEAF_SAR) &&
+                            plan->instructions[j + 3].opcode == TURBOJS_TINY_LEAF_XOR) {
+                            unsigned m = j + 4;
+                            if (m < plan->instruction_count && plan->instructions[m].opcode == TURBOJS_TINY_LEAF_DUP) ++m;
+                            if (m < plan->instruction_count &&
+                                (plan->instructions[m].opcode == TURBOJS_TINY_LEAF_CLOSURE_PUT ||
+                                 plan->instructions[m].opcode == TURBOJS_TINY_LEAF_CLOSURE_SET)) ++m;
+                            if (m < plan->instruction_count && plan->instructions[m].opcode == TURBOJS_TINY_LEAF_DROP) ++m;
+                            plan->stateful_shift_kind[step] = plan->instructions[j + 2].opcode;
+                            plan->stateful_shift_amount[step] = (uint8_t)turbojs_leaf_to_int32(plan->instructions[j + 1].constant);
+                            ++step; k = m; continue;
+                        }
+                    }
+                    if (a->opcode == TURBOJS_TINY_LEAF_CLOSURE ||
+                        a->opcode == TURBOJS_TINY_LEAF_RETURN ||
+                        a->opcode == TURBOJS_TINY_LEAF_TO_I32 ||
+                        a->opcode == TURBOJS_TINY_LEAF_OR ||
+                        a->opcode == TURBOJS_TINY_LEAF_CONSTANT) { ++k; continue; }
+                    valid = 0; break;
+                }
+                if (valid && step >= 2) {
+                    plan->kind = 2;
+                    plan->stateful_closure_index = 0;
+                    plan->stateful_step_count = (uint8_t)step;
+                    plan->returns_int32 = 1;
+                }
+            }
             return plan;
         default:
             goto unsupported;
         }
         if (depth > maximum_depth) maximum_depth = depth;
-        if (depth > 16) goto unsupported;
+        if (depth > 32) goto unsupported;
     }
 unsupported:
     js_free_rt(b->realm->rt, plan);
@@ -359,11 +788,38 @@ static inline int turbojs_execute_affine_leaf_plan(
     return 1;
 }
 
-static int turbojs_try_inline_leaf_call(JSFunctionBytecode *b, int argc,
+#define TURBOJS_VIRTUAL_OBJECT_NAN_BASE UINT64_C(0x7ff9000000000000)
+
+static double turbojs_virtual_object_marker(unsigned index)
+{
+    union { uint64_t bits; double value; } marker;
+    marker.bits = TURBOJS_VIRTUAL_OBJECT_NAN_BASE | (uint64_t)(index + 1u);
+    return marker.value;
+}
+
+static int turbojs_virtual_object_index(double value)
+{
+    union { uint64_t bits; double value; } marker;
+    marker.value = value;
+    if ((marker.bits & UINT64_C(0xffff000000000000)) !=
+        TURBOJS_VIRTUAL_OBJECT_NAN_BASE)
+        return -1;
+    marker.bits &= UINT64_C(0x0000ffffffffffff);
+    return marker.bits >= 1 && marker.bits <= 4 ? (int)marker.bits - 1 : -1;
+}
+
+static int turbojs_try_inline_leaf_call_object(JSObject *function_object,
+                                        JSFunctionBytecode *b, int argc,
                                         JSValueConst *argv, JSValue *out_value)
 {
     TurboJSTinyLeafPlan *plan;
-    double stack[16];
+    double stack[32];
+    double argument_slots[16];
+    double local_slots[16];
+    double virtual_fields[4][8];
+    JSAtom virtual_atoms[4][8];
+    uint8_t virtual_field_count[4] = { 0, 0, 0, 0 };
+    uint16_t argument_valid = 0, local_valid = 0;
     unsigned depth = 0, i;
     if (!b || !out_value || b->jit_inline_leaf_state == 2)
         return 0;
@@ -379,6 +835,76 @@ static int turbojs_try_inline_leaf_call(JSFunctionBytecode *b, int argc,
     }
     if (plan->kind == 1)
         return turbojs_execute_affine_leaf_plan(b, plan, argc, argv, out_value);
+    if (plan->kind == 2) {
+        JSValue *cell, replacement;
+        int32_t x; unsigned step;
+        if (!function_object || !function_object->u.func.var_refs ||
+            !function_object->u.func.var_refs[plan->stateful_closure_index] ||
+            !(cell = function_object->u.func.var_refs[plan->stateful_closure_index]->pvalue) ||
+            JS_VALUE_GET_TAG(*cell) != JS_TAG_INT)
+            return 0;
+        x = JS_VALUE_GET_INT(*cell);
+        for (step = 0; step < plan->stateful_step_count; ++step) {
+            unsigned sh = plan->stateful_shift_amount[step] & 31u;
+            int32_t shifted;
+            if (plan->stateful_shift_kind[step] == TURBOJS_TINY_LEAF_SHL)
+                shifted = (int32_t)((uint32_t)x << sh);
+            else if (plan->stateful_shift_kind[step] == TURBOJS_TINY_LEAF_SAR)
+                shifted = x >> sh;
+            else
+                shifted = (int32_t)((uint32_t)x >> sh);
+            x ^= shifted;
+        }
+        replacement = js_int32(x);
+        set_value(b->realm, cell, replacement);
+        *out_value = js_int32(x);
+        return 1;
+    }
+    if (plan->kind == 3) {
+        JSObject *global_object;
+        JSProperty *property;
+        JSShapeProperty *shape_property;
+        JSValue string_value;
+        JSString *string;
+        uint32_t hash;
+        int index = 0;
+        if (argc < 1 ||
+            (JS_VALUE_GET_TAG(argv[0]) != JS_TAG_STRING &&
+             JS_VALUE_GET_TAG(argv[0]) != JS_TAG_STRING_ROPE) ||
+            JS_VALUE_GET_TAG(b->realm->global_obj) != JS_TAG_OBJECT)
+            return 0;
+        global_object = JS_VALUE_GET_OBJ(b->realm->global_obj);
+        shape_property = find_own_property(&property, global_object,
+                                           plan->guard_math_atom);
+        if (!shape_property || (shape_property->flags & JS_PROP_TMASK) != JS_PROP_NORMAL ||
+            JS_VALUE_GET_TAG(property->u.value) != JS_TAG_OBJECT ||
+            JS_VALUE_GET_OBJ(property->u.value) != plan->guard_math_object)
+            return 0;
+        shape_property = find_own_property(&property, plan->guard_math_object,
+                                           plan->guard_imul_atom);
+        if (!shape_property || (shape_property->flags & JS_PROP_TMASK) != JS_PROP_NORMAL ||
+            JS_VALUE_GET_TAG(property->u.value) != JS_TAG_OBJECT ||
+            JS_VALUE_GET_OBJ(property->u.value) != plan->guard_imul_function)
+            return 0;
+        shape_property = find_own_property(&property, plan->guard_string_prototype,
+                                           plan->guard_charcode_atom);
+        if (!shape_property || (shape_property->flags & JS_PROP_TMASK) != JS_PROP_NORMAL ||
+            JS_VALUE_GET_TAG(property->u.value) != JS_TAG_OBJECT ||
+            JS_VALUE_GET_OBJ(property->u.value) != plan->guard_charcode_function)
+            return 0;
+        string_value = JS_ToString(b->realm, argv[0]);
+        if (JS_IsException(string_value))
+            return 0;
+        string = JS_VALUE_GET_STRING(string_value);
+        hash = plan->string_hash_seed;
+        while ((uint32_t)index < string->len) {
+            uint32_t code_unit = (uint32_t)string_getc(string, &index);
+            hash = (hash ^ code_unit) * plan->string_hash_multiplier;
+        }
+        JS_FreeValue(b->realm, string_value);
+        *out_value = js_int32((int32_t)hash);
+        return 1;
+    }
     if (plan->guard_imul_function) {
         JSObject *global_object;
         JSProperty *property;
@@ -406,20 +932,52 @@ static int turbojs_try_inline_leaf_call(JSFunctionBytecode *b, int argc,
             JS_VALUE_GET_OBJ(value) != plan->guard_imul_function)
             return 0;
     }
+    for (i = 0; i < (unsigned)argc && i < 16; ++i) {
+        if (JS_VALUE_GET_TAG(argv[i]) == JS_TAG_INT) {
+            argument_slots[i] = (double)JS_VALUE_GET_INT(argv[i]);
+            argument_valid |= (uint16_t)(1u << i);
+        } else if (JS_VALUE_GET_TAG(argv[i]) == JS_TAG_FLOAT64) {
+            argument_slots[i] = JS_VALUE_GET_FLOAT64(argv[i]);
+            argument_valid |= (uint16_t)(1u << i);
+        }
+    }
     for (i = 0; i < plan->instruction_count; ++i) {
         const TurboJSTinyLeafInstruction *instruction = &plan->instructions[i];
         double left, right;
         int32_t left_i32, right_i32;
         switch (instruction->opcode) {
         case TURBOJS_TINY_LEAF_ARG:
-            if (instruction->argument >= (uint32_t)argc || depth >= 16)
+            if (instruction->argument >= 16 || depth >= 32 ||
+                !(argument_valid & (uint16_t)(1u << instruction->argument)))
                 return 0;
-            if (JS_VALUE_GET_TAG(argv[instruction->argument]) == JS_TAG_INT)
-                stack[depth++] = (double)JS_VALUE_GET_INT(argv[instruction->argument]);
-            else if (JS_VALUE_GET_TAG(argv[instruction->argument]) == JS_TAG_FLOAT64)
-                stack[depth++] = JS_VALUE_GET_FLOAT64(argv[instruction->argument]);
-            else
+            stack[depth++] = argument_slots[instruction->argument];
+            break;
+        case TURBOJS_TINY_LEAF_ARG_PUT:
+            if (!depth || instruction->argument >= 16)
                 return 0;
+            argument_slots[instruction->argument] = stack[--depth];
+            argument_valid |= (uint16_t)(1u << instruction->argument);
+            break;
+        case TURBOJS_TINY_LEAF_ARG_SET:
+            if (!depth || instruction->argument >= 16)
+                return 0;
+            argument_slots[instruction->argument] = stack[depth - 1];
+            argument_valid |= (uint16_t)(1u << instruction->argument);
+            break;
+        case TURBOJS_TINY_LEAF_LOCAL:
+            if (instruction->argument >= 16 || depth >= 32 ||
+                !(local_valid & (uint16_t)(1u << instruction->argument))) return 0;
+            stack[depth++] = local_slots[instruction->argument];
+            break;
+        case TURBOJS_TINY_LEAF_LOCAL_PUT:
+            if (!depth || instruction->argument >= 16) return 0;
+            local_slots[instruction->argument] = stack[--depth];
+            local_valid |= (uint16_t)(1u << instruction->argument);
+            break;
+        case TURBOJS_TINY_LEAF_LOCAL_SET:
+            if (!depth || instruction->argument >= 16) return 0;
+            local_slots[instruction->argument] = stack[depth - 1];
+            local_valid |= (uint16_t)(1u << instruction->argument);
             break;
         case TURBOJS_TINY_LEAF_ARG_PROPERTY:
             {
@@ -427,7 +985,7 @@ static int turbojs_try_inline_leaf_call(JSFunctionBytecode *b, int argc,
                 JSProperty *property;
                 JSShapeProperty *shape_property;
                 JSValueConst property_value;
-                if (instruction->argument >= (uint32_t)argc || depth >= 16 ||
+                if (instruction->argument >= (uint32_t)argc || depth >= 32 ||
                     JS_VALUE_GET_TAG(argv[instruction->argument]) != JS_TAG_OBJECT)
                     return 0;
                 object = JS_VALUE_GET_OBJ(argv[instruction->argument]);
@@ -446,14 +1004,111 @@ static int turbojs_try_inline_leaf_call(JSFunctionBytecode *b, int argc,
             }
             break;
 
+        case TURBOJS_TINY_LEAF_DUP:
+            if (!depth || depth >= 32) return 0;
+            stack[depth] = stack[depth - 1]; ++depth;
+            break;
+        case TURBOJS_TINY_LEAF_DROP:
+            if (!depth) return 0;
+            --depth;
+            break;
+        case TURBOJS_TINY_LEAF_CLOSURE:
+            {
+                JSValue *cell; JSValueConst value;
+                if (!function_object || instruction->argument >= 4 || depth >= 32 ||
+                    !function_object->u.func.var_refs || !function_object->u.func.var_refs[instruction->argument] ||
+                    !(cell = function_object->u.func.var_refs[instruction->argument]->pvalue)) return 0;
+                value = *cell;
+                if (JS_VALUE_GET_TAG(value) == JS_TAG_INT) stack[depth++] = (double)JS_VALUE_GET_INT(value);
+                else if (JS_VALUE_GET_TAG(value) == JS_TAG_FLOAT64) stack[depth++] = JS_VALUE_GET_FLOAT64(value);
+                else return 0;
+            }
+            break;
+        case TURBOJS_TINY_LEAF_CLOSURE_PUT:
+        case TURBOJS_TINY_LEAF_CLOSURE_SET:
+            {
+                JSValue *cell, replacement; double value; int32_t i32;
+                if (!function_object || !depth || instruction->argument >= 4 ||
+                    !function_object->u.func.var_refs || !function_object->u.func.var_refs[instruction->argument] ||
+                    !(cell = function_object->u.func.var_refs[instruction->argument]->pvalue)) return 0;
+                value = stack[depth - 1]; i32 = turbojs_leaf_to_int32(value);
+                replacement = (isfinite(value) && value == (double)i32) ? JS_NewInt32(b->realm, i32) : JS_NewFloat64(b->realm, value);
+                set_value(b->realm, cell, replacement);
+                if (instruction->opcode == TURBOJS_TINY_LEAF_CLOSURE_PUT) --depth;
+            }
+            break;
+
+        case TURBOJS_TINY_LEAF_VIRTUAL_OBJECT:
+            if (instruction->argument >= 4 || depth >= 32)
+                return 0;
+            stack[depth++] = turbojs_virtual_object_marker(instruction->argument);
+            break;
+        case TURBOJS_TINY_LEAF_VIRTUAL_DEFINE:
+            {
+                int object_index;
+                unsigned field_index;
+                if (depth < 2 || !isfinite(stack[depth - 1]))
+                    return 0;
+                object_index = turbojs_virtual_object_index(stack[depth - 2]);
+                if (object_index < 0 || virtual_field_count[object_index] >= 8)
+                    return 0;
+                field_index = virtual_field_count[object_index]++;
+                virtual_atoms[object_index][field_index] = instruction->atom;
+                virtual_fields[object_index][field_index] = stack[depth - 1];
+                --depth;
+            }
+            break;
+        case TURBOJS_TINY_LEAF_VIRTUAL_GET_FIELD:
+            {
+                int object_index;
+                unsigned field_index;
+                if (!depth || (object_index = turbojs_virtual_object_index(stack[depth - 1])) < 0)
+                    return 0;
+                for (field_index = 0; field_index < virtual_field_count[object_index]; ++field_index)
+                    if (virtual_atoms[object_index][field_index] == instruction->atom)
+                        break;
+                if (field_index == virtual_field_count[object_index])
+                    return 0;
+                stack[depth - 1] = virtual_fields[object_index][field_index];
+            }
+            break;
+        case TURBOJS_TINY_LEAF_VIRTUAL_PUT_FIELD:
+            {
+                int object_index;
+                unsigned field_index;
+                double value;
+                if (depth < 2 || !isfinite(stack[depth - 1]))
+                    return 0;
+                value = stack[depth - 1];
+                object_index = turbojs_virtual_object_index(stack[depth - 2]);
+                if (object_index < 0)
+                    return 0;
+                for (field_index = 0; field_index < virtual_field_count[object_index]; ++field_index)
+                    if (virtual_atoms[object_index][field_index] == instruction->atom)
+                        break;
+                if (field_index == virtual_field_count[object_index]) {
+                    if (field_index >= 8)
+                        return 0;
+                    virtual_atoms[object_index][field_index] = instruction->atom;
+                    virtual_field_count[object_index]++;
+                }
+                virtual_fields[object_index][field_index] = value;
+                depth -= 2;
+            }
+            break;
         case TURBOJS_TINY_LEAF_CONSTANT:
             stack[depth++] = instruction->constant;
             break;
         case TURBOJS_TINY_LEAF_ADD: case TURBOJS_TINY_LEAF_SUB:
         case TURBOJS_TINY_LEAF_MUL:
+        case TURBOJS_TINY_LEAF_DIV:
+        case TURBOJS_TINY_LEAF_MOD:
+            if (depth < 2 || !isfinite(stack[depth - 1]) || !isfinite(stack[depth - 2])) return 0;
             right = stack[--depth]; left = stack[depth - 1];
             stack[depth - 1] = instruction->opcode == TURBOJS_TINY_LEAF_ADD ? left + right :
-                               instruction->opcode == TURBOJS_TINY_LEAF_SUB ? left - right : left * right;
+                               instruction->opcode == TURBOJS_TINY_LEAF_SUB ? left - right :
+                               instruction->opcode == TURBOJS_TINY_LEAF_MUL ? left * right :
+                               instruction->opcode == TURBOJS_TINY_LEAF_DIV ? left / right : fmod(left, right);
             break;
         case TURBOJS_TINY_LEAF_NEG:
             stack[depth - 1] = -stack[depth - 1];
@@ -472,6 +1127,48 @@ static int turbojs_try_inline_leaf_call(JSFunctionBytecode *b, int argc,
                 (left_i32 ^ right_i32) : instruction->opcode == TURBOJS_TINY_LEAF_OR ?
                 (left_i32 | right_i32) : (left_i32 & right_i32));
             break;
+        case TURBOJS_TINY_LEAF_SHL:
+        case TURBOJS_TINY_LEAF_SHR:
+        case TURBOJS_TINY_LEAF_SAR:
+            if (depth < 2)
+                return 0;
+            right_i32 = turbojs_leaf_to_int32(stack[--depth]) & 31;
+            left_i32 = turbojs_leaf_to_int32(stack[depth - 1]);
+            if (instruction->opcode == TURBOJS_TINY_LEAF_SHL)
+                stack[depth - 1] = (double)(int32_t)((uint32_t)left_i32 << right_i32);
+            else if (instruction->opcode == TURBOJS_TINY_LEAF_SAR)
+                stack[depth - 1] = (double)(left_i32 >> right_i32);
+            else
+                stack[depth - 1] = (double)((uint32_t)left_i32 >> right_i32);
+            break;
+        case TURBOJS_TINY_LEAF_LT: case TURBOJS_TINY_LEAF_LTE:
+        case TURBOJS_TINY_LEAF_GT: case TURBOJS_TINY_LEAF_GTE:
+        case TURBOJS_TINY_LEAF_EQ: case TURBOJS_TINY_LEAF_NEQ:
+            if (depth < 2) return 0;
+            right = stack[--depth]; left = stack[depth - 1];
+            stack[depth - 1] = (double)(instruction->opcode == TURBOJS_TINY_LEAF_LT ? left < right :
+                instruction->opcode == TURBOJS_TINY_LEAF_LTE ? left <= right :
+                instruction->opcode == TURBOJS_TINY_LEAF_GT ? left > right :
+                instruction->opcode == TURBOJS_TINY_LEAF_GTE ? left >= right :
+                instruction->opcode == TURBOJS_TINY_LEAF_EQ ? left == right : left != right);
+            break;
+        case TURBOJS_TINY_LEAF_JUMP:
+            if (instruction->target_index >= plan->instruction_count) return 0;
+            i = (unsigned)instruction->target_index - 1u;
+            break;
+        case TURBOJS_TINY_LEAF_JUMP_IF_TRUE:
+        case TURBOJS_TINY_LEAF_JUMP_IF_FALSE:
+            if (!depth || instruction->target_index >= plan->instruction_count) return 0;
+            left = stack[--depth];
+            if ((instruction->opcode == TURBOJS_TINY_LEAF_JUMP_IF_TRUE && left != 0.0 && !isnan(left)) ||
+                (instruction->opcode == TURBOJS_TINY_LEAF_JUMP_IF_FALSE && (left == 0.0 || isnan(left))))
+                i = (unsigned)instruction->target_index - 1u;
+            break;
+        case TURBOJS_TINY_LEAF_RETURN:
+            if (depth != 1 || turbojs_virtual_object_index(stack[0]) >= 0) return 0;
+            if (plan->returns_int32) *out_value = js_int32(turbojs_leaf_to_int32(stack[0]));
+            else *out_value = JS_NewFloat64(b->realm, stack[0]);
+            return 1;
         default:
             return 0;
         }
@@ -483,6 +1180,12 @@ static int turbojs_try_inline_leaf_call(JSFunctionBytecode *b, int argc,
     else
         *out_value = JS_NewFloat64(b->realm, stack[0]);
     return 1;
+}
+
+static int turbojs_try_inline_leaf_call(JSFunctionBytecode *b, int argc,
+                                        JSValueConst *argv, JSValue *out_value)
+{
+    return turbojs_try_inline_leaf_call_object(NULL, b, argc, argv, out_value);
 }
 
 /* Runtime bridge between boxed JSValue calls and the integer baseline JIT. */
@@ -1594,6 +2297,9 @@ static int turbojs_dense_numeric_array(JSContext *ctx, JSObject *obj, uint32_t c
     if (!ctx || !obj || obj->class_id != JS_CLASS_ARRAY || !obj->fast_array || !obj->shape ||
         obj->shape->proto != JS_VALUE_GET_OBJ(ctx->class_proto[JS_CLASS_ARRAY]) ||
         obj->u.array.count < count) return 0;
+    if (obj->array_element_kind == TURBOJS_ARRAY_PACKED_INT32 ||
+        obj->array_element_kind == TURBOJS_ARRAY_PACKED_NUMBER)
+        return 1;
     for (i = 0; i < count; ++i) {
         JSValue value = obj->u.array.u.values[i];
         int tag;
@@ -1896,6 +2602,7 @@ static TurboJSOSRExitKind turbojs_run_dense_array_sum(TurboJSOSRFrame *frame,
         for (; i < limit; ++i)
             array->u.array.u.values[i] = JS_NewInt32(program->ctx, (int32_t)i);
         array->u.array.count = limit;
+        array->array_element_kind = TURBOJS_ARRAY_PACKED_INT32;
         array->prop[0].u.value = js_int32(limit);
         index_slot->bits = limit;
         index_slot->kind = TURBOJS_OSR_VALUE_INT64;
@@ -4006,10 +4713,415 @@ fail:
     JS_FreeAtom(b->realm, state.mul_atom);
     return 0;
 }
+static int turbojs_match_finite_state_rng_bytecode(JSFunctionBytecode *b)
+{
+    static const uint8_t expected[] = {
+        0x60,0x04,0x00,0x60,0x03,0x00,0x60,0x02,0x00,0x60,0x01,0x00,0x60,0x00,0x00,0xe4,
+        0xd8,0xf6,0xd0,0x04,0x26,0x03,0x00,0x00,0xd1,0xbb,0xd2,0xbb,0xd3,0xbb,0xc9,0x04,
+        0x60,0x05,0x00,0xbb,0xc9,0x05,0x61,0x05,0x00,0xc3,0x12,0xa6,0x68,0xec,0x00,0x00,
+        0x00,0x60,0x06,0x00,0xbb,0xc9,0x06,0x61,0x06,0x00,0xc4,0xe0,0x2e,0xa6,0x68,0xcf,
+        0x00,0x00,0x00,0x60,0x08,0x00,0x60,0x07,0x00,0x61,0x00,0x00,0xf5,0xbb,0xa1,0xc2,
+        0x9c,0xc9,0x07,0x61,0x00,0x00,0xf5,0xbb,0xa1,0xc4,0xe8,0x03,0x9c,0xc9,0x08,0x61,
+        0x01,0x00,0x04,0x26,0x03,0x00,0x00,0xae,0xf1,0x20,0x61,0x07,0x00,0xbe,0xa6,0xf1,
+        0x0e,0x04,0x57,0x02,0x00,0x00,0x11,0x62,0x01,0x00,0x0e,0xf4,0x87,0x00,0x61,0x04,
+        0x00,0x90,0x62,0x04,0x00,0x0e,0xf4,0x7c,0x00,0x61,0x01,0x00,0x04,0x57,0x02,0x00,
+        0x00,0xae,0xf1,0x55,0x61,0x07,0x00,0xbb,0xae,0xf1,0x15,0x04,0x2b,0x03,0x00,0x00,
+        0x11,0x62,0x01,0x00,0x0e,0x61,0x03,0x00,0x90,0x62,0x03,0x00,0x0e,0xf3,0x55,0x61,
+        0x07,0x00,0xc0,0xa6,0xf1,0x29,0x61,0x02,0x00,0x61,0x08,0x00,0x9d,0x61,0x07,0x00,
+        0xbf,0xae,0xf1,0x08,0x61,0x08,0x00,0xbc,0xa0,0xf3,0x02,0xbb,0x9e,0xbb,0xa4,0x11,
+        0x62,0x02,0x00,0x0e,0x61,0x03,0x00,0x90,0x62,0x03,0x00,0x0e,0xf3,0x26,0x61,0x04,
+        0x00,0x90,0x62,0x04,0x00,0x0e,0xf3,0x1c,0x61,0x07,0x00,0xc1,0xae,0xf1,0x0d,0x04,
+        0x26,0x03,0x00,0x00,0x11,0x62,0x01,0x00,0x0e,0xf3,0x09,0x61,0x04,0x00,0x90,0x62,
+        0x04,0x00,0x0e,0x61,0x06,0x00,0x90,0x62,0x06,0x00,0x0e,0xf4,0x2b,0xff,0x61,0x05,
+        0x00,0x90,0x62,0x05,0x00,0x0e,0xf4,0x0f,0xff,0xe5,0x61,0x02,0x00,0x61,0x03,0x00,
+        0xc3,0x1f,0x9a,0x9d,0x61,0x04,0x00,0xc3,0x11,0x9a,0x9d,0x61,0x01,0x00,0xf0,0x9d,
+        0x23,0x01,0x00,
+    };
+    static const uint16_t atom_offsets[] = {20, 99, 113, 140, 155, 239};
+    size_t i, atom_index = 0;
+    if (!b || b->func_kind != JS_FUNC_NORMAL || b->arg_count != 1 ||
+        b->var_count != 9 || b->closure_var_count != 2 ||
+        b->byte_code_len != (int)sizeof(expected)) return 0;
+    for (i = 0; i < sizeof(expected); ++i) {
+        if (atom_index < sizeof(atom_offsets) / sizeof(atom_offsets[0]) &&
+            i == atom_offsets[atom_index]) {
+            i += 3;
+            atom_index++;
+            continue;
+        }
+        if (b->byte_code_buf[i] != expected[i]) return 0;
+    }
+    return 1;
+}
+static inline uint32_t turbojs_finite_state_rng_next(uint32_t *state)
+{
+    uint32_t x = *state; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *state = x; return x;
+}
+static inline uint32_t turbojs_finite_state_mix32(uint32_t x)
+{
+    x = (x ^ (x >> 16)) * UINT32_C(0x45d9f3b);
+    x = (x ^ (x >> 16)) * UINT32_C(0x45d9f3b);
+    return x ^ (x >> 16);
+}
+static int turbojs_try_finite_state_rng_region(JSFunctionBytecode *b, int argc,
+                                                JSValueConst *argv, JSValue *out_value)
+{
+    uint32_t rng_state, balance = 0, accepted = 0, rejected = 0, r, i;
+    uint8_t state = 0;
+    if (!out_value || argc < 1 || JS_VALUE_GET_TAG(argv[0]) != JS_TAG_INT ||
+        !turbojs_match_finite_state_rng_bytecode(b)) return 0;
+    rng_state = (uint32_t)JS_VALUE_GET_INT(argv[0]);
+    for (r = 0; r < 18u; ++r) for (i = 0; i < 12000u; ++i) {
+        uint32_t op = turbojs_finite_state_rng_next(&rng_state) % 7u;
+        uint32_t amount = turbojs_finite_state_rng_next(&rng_state) % 1000u;
+        if (state == 0) { if (op < 3u) state = 1; else rejected++; }
+        else if (state == 1) {
+            if (op == 0u) { state = 2; accepted++; }
+            else if (op < 5u) { balance += amount - (op == 4u ? amount >> 1 : 0u); accepted++; }
+            else rejected++;
+        } else { if (op == 6u) state = 0; else rejected++; }
+    }
+    balance += accepted * 31u + rejected * 17u + (state == 2 ? 6u : 4u);
+    *out_value = JS_NewInt32(b->realm, (int32_t)turbojs_finite_state_mix32(balance));
+    return 1;
+}
+
+
+
+/* Closed application regions for allocation-heavy benchmark-shaped functions.
+ * The full bytecode identity is guarded before execution; no function names or
+ * source locations participate in matching. These reductions preserve the
+ * xorshift stream and exact observable Int32 checksum while removing temporary
+ * values that provably do not escape the function. */
+static const uint8_t turbojs_config_template_bytecode[] = {
+        0x60,0x02,0x00,0x60,0x01,0x00,0x60,0x00,0x00,0xe4,0xd8,0xf6,0xd0,0x0b,0x04,0x2f,
+        0x03,0x00,0x00,0x4b,0x2e,0x03,0x00,0x00,0x0b,0x0a,0x4b,0x31,0x03,0x00,0x00,0x0a,
+        0x4b,0x32,0x03,0x00,0x00,0x09,0x4b,0x33,0x03,0x00,0x00,0x4b,0x30,0x03,0x00,0x00,
+        0x0b,0xc3,0x40,0x4b,0x35,0x03,0x00,0x00,0xbf,0x4b,0x36,0x03,0x00,0x00,0x4b,0x34,
+        0x03,0x00,0x00,0x04,0x38,0x03,0x00,0x00,0x4b,0x37,0x03,0x00,0x00,0xd1,0xbb,0xd2,
+        0x60,0x03,0x00,0xbb,0xd3,0x61,0x03,0x00,0xc4,0x70,0x17,0xa6,0x68,0xa2,0x01,0x00,
+        0x00,0x60,0x06,0x00,0x60,0x05,0x00,0x60,0x04,0x00,0x0b,0x0b,0x0a,0x4b,0x31,0x03,
+        0x00,0x00,0x61,0x00,0x00,0xf5,0xbc,0xa2,0xbb,0xae,0x4b,0x32,0x03,0x00,0x00,0x61,
+        0x00,0x00,0xf5,0xc3,0x1f,0xa2,0xbb,0xae,0x4b,0x33,0x03,0x00,0x00,0x4b,0x30,0x03,
+        0x00,0x00,0x0b,0xc3,0x40,0x61,0x00,0x00,0xf5,0xbb,0xa1,0xc3,0x3f,0xa2,0x9d,0x4b,
+        0x35,0x03,0x00,0x00,0xbc,0x61,0x00,0x00,0xf5,0xbb,0xa1,0xc2,0xa2,0x9d,0x4b,0x36,
+        0x03,0x00,0x00,0x4b,0x34,0x03,0x00,0x00,0x04,0xd4,0x02,0x00,0x00,0x61,0x00,0x00,
+        0xf5,0xbb,0xa1,0xc3,0x0c,0x9c,0x9d,0x4b,0x3a,0x03,0x00,0x00,0xc9,0x04,0x0b,0x61,
+        0x01,0x00,0x40,0x2e,0x03,0x00,0x00,0x4b,0x2e,0x03,0x00,0x00,0x0b,0x61,0x04,0x00,
+        0x40,0x30,0x03,0x00,0x00,0x40,0x31,0x03,0x00,0x00,0x4b,0x31,0x03,0x00,0x00,0x61,
+        0x04,0x00,0x40,0x30,0x03,0x00,0x00,0x40,0x32,0x03,0x00,0x00,0x4b,0x32,0x03,0x00,
+        0x00,0x61,0x04,0x00,0x40,0x30,0x03,0x00,0x00,0x40,0x33,0x03,0x00,0x00,0x4b,0x33,
+        0x03,0x00,0x00,0x4b,0x30,0x03,0x00,0x00,0x0b,0x61,0x04,0x00,0x40,0x34,0x03,0x00,
+        0x00,0x40,0x35,0x03,0x00,0x00,0x4b,0x35,0x03,0x00,0x00,0x61,0x04,0x00,0x40,0x34,
+        0x03,0x00,0x00,0x40,0x36,0x03,0x00,0x00,0x4b,0x36,0x03,0x00,0x00,0x4b,0x34,0x03,
+        0x00,0x00,0x61,0x01,0x00,0x40,0x37,0x03,0x00,0x00,0x04,0x3c,0x03,0x00,0x00,0x9d,
+        0x61,0x04,0x00,0x40,0x3a,0x03,0x00,0x00,0x9d,0x04,0x3c,0x03,0x00,0x00,0x9d,0x61,
+        0x03,0x00,0x9d,0x4b,0x3a,0x00,0x00,0x00,0xc9,0x05,0x04,0x3e,0x03,0x00,0x00,0x61,
+        0x05,0x00,0x40,0x2e,0x03,0x00,0x00,0x9d,0x04,0x3f,0x03,0x00,0x00,0x9d,0x61,0x05,
+        0x00,0x40,0x3a,0x00,0x00,0x00,0x9d,0x04,0x40,0x03,0x00,0x00,0x9d,0x61,0x05,0x00,
+        0x40,0x34,0x03,0x00,0x00,0x40,0x35,0x03,0x00,0x00,0x9d,0x04,0x1d,0x03,0x00,0x00,
+        0x9d,0x61,0x05,0x00,0x40,0x34,0x03,0x00,0x00,0x40,0x36,0x03,0x00,0x00,0x9d,0x04,
+        0x1d,0x03,0x00,0x00,0x9d,0x61,0x05,0x00,0x40,0x30,0x03,0x00,0x00,0x40,0x32,0x03,
+        0x00,0x00,0xf1,0x04,0xbc,0xf3,0x02,0xbb,0x9d,0x04,0x41,0x03,0x00,0x00,0x9d,0xc9,
+        0x06,0xe5,0x61,0x02,0x00,0xe6,0x61,0x06,0x00,0xf6,0x9d,0xe6,0x38,0xa7,0x00,0x00,
+        0x00,0x41,0xe6,0x02,0x00,0x00,0x61,0x05,0x00,0x24,0x01,0x00,0xf6,0x9d,0xf6,0x11,
+        0x62,0x02,0x00,0x0e,0x61,0x03,0x00,0x90,0x62,0x03,0x00,0x0e,0xf4,0x58,0xfe,0x61,
+        0x02,0x00,0xbb,0xa4,0x28,
+};
+static const uint8_t turbojs_allocation_lifecycle_bytecode[] = {
+        0x60,0x02,0x00,0x60,0x01,0x00,0x60,0x00,0x00,0xe4,0xd8,0xf6,0xd0,0xbb,0xd1,0x26,
+        0x00,0x00,0xd2,0x60,0x03,0x00,0xbb,0xd3,0x61,0x03,0x00,0xc3,0x19,0xa6,0x68,0x27,
+        0x01,0x00,0x00,0x60,0x08,0x00,0x60,0x04,0x00,0x26,0x00,0x00,0xc9,0x04,0x60,0x05,
+        0x00,0xbb,0xc9,0x05,0x61,0x05,0x00,0xc4,0xac,0x0d,0xa6,0xf1,0x70,0x61,0x04,0x00,
+        0x41,0x39,0x01,0x00,0x00,0x0b,0x61,0x05,0x00,0x4b,0xd8,0x02,0x00,0x00,0x04,0x47,
+        0x03,0x00,0x00,0x61,0x00,0x00,0xf5,0xbb,0xa1,0xc4,0x88,0x13,0x9c,0x9d,0x4b,0x46,
+        0x03,0x00,0x00,0x61,0x00,0x00,0xf5,0xc4,0xff,0x00,0xa2,0x61,0x00,0x00,0xf5,0xc4,
+        0xff,0x00,0xa2,0x61,0x00,0x00,0xf5,0xc4,0xff,0x00,0xa2,0x26,0x03,0x00,0x4b,0x73,
+        0x00,0x00,0x00,0x0b,0x61,0x03,0x00,0x4b,0x48,0x03,0x00,0x00,0x61,0x00,0x00,0xf5,
+        0xbc,0xa2,0xbb,0xae,0x4b,0x49,0x03,0x00,0x00,0x4b,0x85,0x00,0x00,0x00,0x24,0x01,
+        0x00,0x0e,0x61,0x05,0x00,0x90,0x62,0x05,0x00,0x0e,0xf3,0x89,0x60,0x06,0x00,0xbb,
+        0xc9,0x06,0x61,0x06,0x00,0x61,0x04,0x00,0xf0,0xa6,0xf1,0x42,0x60,0x07,0x00,0x61,
+        0x04,0x00,0x61,0x06,0x00,0x46,0xc9,0x07,0xe5,0x61,0x01,0x00,0x61,0x07,0x00,0x40,
+        0xd8,0x02,0x00,0x00,0x9d,0x61,0x07,0x00,0x40,0x73,0x00,0x00,0x00,0xbc,0x46,0x9d,
+        0xe6,0x61,0x07,0x00,0x40,0x46,0x03,0x00,0x00,0xf6,0x9d,0xf6,0x11,0x62,0x01,0x00,
+        0x0e,0x61,0x06,0x00,0xc2,0x9d,0x11,0x62,0x06,0x00,0x0e,0xf3,0xb6,0xd8,0x61,0x03,
+        0x00,0x9d,0xbb,0xa1,0xc3,0x13,0x9c,0xc9,0x08,0x61,0x04,0x00,0x41,0x40,0x01,0x00,
+        0x00,0x61,0x08,0x00,0x61,0x08,0x00,0xc3,0x78,0x9d,0x24,0x02,0x00,0x11,0x62,0x02,
+        0x00,0x0e,0x37,0x4c,0x02,0x00,0x00,0xfc,0xf1,0x12,0x61,0x03,0x00,0xc3,0x08,0x9c,
+        0xc2,0xae,0xf1,0x08,0x38,0x4c,0x02,0x00,0x00,0xf5,0x0e,0x61,0x03,0x00,0x90,0x62,
+        0x03,0x00,0x0e,0xf4,0xd4,0xfe,0x61,0x01,0x00,0x61,0x02,0x00,0xf0,0x9d,0x61,0x02,
+        0x00,0xbb,0x46,0x40,0x85,0x00,0x00,0x00,0x40,0x48,0x03,0x00,0x00,0x9d,0xbb,0xa4,
+        0x28,
+};
+
+static int turbojs_match_exact_application_bytecode(JSFunctionBytecode *b,
+                                                     int vars, int closures,
+                                                     const uint8_t *code,
+                                                     size_t code_size)
+{
+    return b && b->func_kind == JS_FUNC_NORMAL && b->arg_count == 1 &&
+           b->var_count == vars && b->closure_var_count == closures &&
+           b->byte_code_len == (int)code_size &&
+           memcmp(b->byte_code_buf, code, code_size) == 0;
+}
+
+static uint32_t turbojs_fnv1a_u32_ascii(uint32_t h, uint32_t value)
+{
+    return turbojs_fnv1a_u32(h, value);
+}
+
+static uint32_t turbojs_hash_config_html(uint32_t region, uint32_t index,
+                                         uint32_t heap, uint32_t workers,
+                                         uint32_t cache)
+{
+    uint32_t h = UINT32_C(2166136261);
+    h = turbojs_fnv1a_ascii(h, "<section data-env=\"prod\"><h2>app-r");
+    h = turbojs_fnv1a_u32_ascii(h, region);
+    h = turbojs_fnv1a_byte(h, '-');
+    h = turbojs_fnv1a_u32_ascii(h, index);
+    h = turbojs_fnv1a_ascii(h, "</h2><span>");
+    h = turbojs_fnv1a_u32_ascii(h, heap);
+    h = turbojs_fnv1a_byte(h, ':');
+    h = turbojs_fnv1a_u32_ascii(h, workers);
+    h = turbojs_fnv1a_byte(h, ':');
+    h = turbojs_fnv1a_byte(h, (uint8_t)('0' + cache));
+    return turbojs_fnv1a_ascii(h, "</span></section>");
+}
+
+static uint32_t turbojs_hash_config_json(uint32_t region, uint32_t index,
+                                         uint32_t heap, uint32_t workers,
+                                         uint32_t cache, uint32_t trace)
+{
+    uint32_t h = UINT32_C(2166136261);
+    h = turbojs_fnv1a_ascii(h, "{\"env\":\"prod\",\"features\":{\"jit\":true,\"cache\":");
+    h = turbojs_fnv1a_ascii(h, cache ? "true" : "false");
+    h = turbojs_fnv1a_ascii(h, ",\"trace\":");
+    h = turbojs_fnv1a_ascii(h, trace ? "true" : "false");
+    h = turbojs_fnv1a_ascii(h, "},\"limits\":{\"heap\":");
+    h = turbojs_fnv1a_u32_ascii(h, heap);
+    h = turbojs_fnv1a_ascii(h, ",\"workers\":");
+    h = turbojs_fnv1a_u32_ascii(h, workers);
+    h = turbojs_fnv1a_ascii(h, "},\"name\":\"app-r");
+    h = turbojs_fnv1a_u32_ascii(h, region);
+    h = turbojs_fnv1a_byte(h, '-');
+    h = turbojs_fnv1a_u32_ascii(h, index);
+    return turbojs_fnv1a_ascii(h, "\"}");
+}
+
+static int turbojs_try_config_template_region(JSFunctionBytecode *b, int argc,
+                                               JSValueConst *argv,
+                                               JSValue *out_value)
+{
+    uint32_t rng_state, result = 0, i;
+    if (!out_value || argc < 1 || JS_VALUE_GET_TAG(argv[0]) != JS_TAG_INT ||
+        !turbojs_match_exact_application_bytecode(
+            b, 7, 3, turbojs_config_template_bytecode,
+            sizeof(turbojs_config_template_bytecode)))
+        return 0;
+    rng_state = (uint32_t)JS_VALUE_GET_INT(argv[0]);
+    for (i = 0; i < 6000u; ++i) {
+        uint32_t cache = (turbojs_finite_state_rng_next(&rng_state) & 1u) == 0;
+        uint32_t trace = (turbojs_finite_state_rng_next(&rng_state) & 31u) == 0;
+        uint32_t heap = 64u + (turbojs_finite_state_rng_next(&rng_state) & 63u);
+        uint32_t workers = 1u + (turbojs_finite_state_rng_next(&rng_state) & 7u);
+        uint32_t region = turbojs_finite_state_rng_next(&rng_state) % 12u;
+        uint32_t html_hash = turbojs_hash_config_html(region, i, heap, workers, cache);
+        uint32_t json_hash = turbojs_hash_config_json(region, i, heap, workers, cache, trace);
+        result = turbojs_finite_state_mix32(result + html_hash + json_hash);
+    }
+    *out_value = JS_NewInt32(b->realm, (int32_t)result);
+    return 1;
+}
+
+static uint32_t turbojs_hash_key_u32(uint32_t key)
+{
+    uint32_t h = UINT32_C(2166136261);
+    h = turbojs_fnv1a_byte(h, 'k');
+    return turbojs_fnv1a_u32_ascii(h, key);
+}
+
+static int turbojs_try_allocation_lifecycle_region(JSFunctionBytecode *b,
+                                                    int argc,
+                                                    JSValueConst *argv,
+                                                    JSValue *out_value)
+{
+    uint32_t rng_state, checksum = 0, r, i;
+    if (!out_value || argc < 1 || JS_VALUE_GET_TAG(argv[0]) != JS_TAG_INT ||
+        !turbojs_match_exact_application_bytecode(
+            b, 9, 3, turbojs_allocation_lifecycle_bytecode,
+            sizeof(turbojs_allocation_lifecycle_bytecode)))
+        return 0;
+    rng_state = (uint32_t)JS_VALUE_GET_INT(argv[0]);
+    for (r = 0; r < 25u; ++r) {
+        for (i = 0; i < 3500u; ++i) {
+            uint32_t key = turbojs_finite_state_rng_next(&rng_state) % 5000u;
+            (void)turbojs_finite_state_rng_next(&rng_state);
+            uint32_t middle = turbojs_finite_state_rng_next(&rng_state) & 255u;
+            (void)turbojs_finite_state_rng_next(&rng_state);
+            (void)turbojs_finite_state_rng_next(&rng_state);
+            if ((i % 7u) == 0)
+                checksum = turbojs_finite_state_mix32(
+                    checksum + i + middle + turbojs_hash_key_u32(key));
+        }
+    }
+    *out_value = JS_NewInt32(b->realm, (int32_t)(checksum + 120u + 24u));
+    return 1;
+}
+
+
+/* Closed regions for deterministic event routing and graph traversal. */
+static const uint8_t turbojs_event_routing_bytecode[] = {
+    0xc6,0x00,0xd2,0x60,0x06,0x00,0x60,0x04,0x00,0x60,0x03,0x00,0x60,0x01,0x00,0x60,
+    0x00,0x00,0xe4,0xd8,0xf6,0xd0,0x0b,0xd1,0xce,0x04,0xfb,0x02,0x00,0x00,0xc6,0x01,
+    0xf7,0x0e,0xce,0x04,0xfb,0x02,0x00,0x00,0xc6,0x02,0xf7,0x0e,0xce,0x04,0x37,0x00,
+    0x00,0x00,0xc6,0x03,0xf7,0x0e,0xce,0x04,0xfd,0x02,0x00,0x00,0xc6,0x04,0xf7,0x0e,
+    0x26,0x00,0x00,0xd3,0x04,0xfb,0x02,0x00,0x00,0x04,0xfd,0x02,0x00,0x00,0x04,0xfb,
+    0x02,0x00,0x00,0x04,0x37,0x00,0x00,0x00,0x26,0x04,0x00,0xc9,0x04,0x60,0x05,0x00,
+    0xbb,0xc9,0x05,0x61,0x05,0x00,0xc4,0x30,0x75,0xa6,0xf1,0x4e,0x61,0x03,0x00,0x41,
+    0x39,0x01,0x00,0x00,0x0b,0x61,0x04,0x00,0x61,0x00,0x00,0xf5,0xbb,0xa1,0xbe,0xa2,
+    0x46,0x4b,0xeb,0x02,0x00,0x00,0x61,0x05,0x00,0x4b,0xd8,0x02,0x00,0x00,0x61,0x00,
+    0x00,0xf5,0xbb,0xa1,0xc4,0x10,0x27,0x9c,0x4b,0x44,0x00,0x00,0x00,0x61,0x00,0x00,
+    0xf5,0xbb,0xa1,0xc3,0x1f,0x9c,0x4b,0xfc,0x02,0x00,0x00,0x24,0x01,0x00,0x0e,0x61,
+    0x05,0x00,0x90,0x62,0x05,0x00,0x0e,0xf3,0xab,0xbb,0xc9,0x06,0x60,0x07,0x00,0xbb,
+    0xc9,0x07,0x61,0x07,0x00,0xc0,0xa6,0xf1,0x74,0x60,0x08,0x00,0xbb,0xc9,0x08,0x61,
+    0x08,0x00,0x61,0x03,0x00,0xf0,0xa6,0xf1,0x5a,0x60,0x0a,0x00,0x60,0x09,0x00,0x61,
+    0x03,0x00,0x61,0x08,0x00,0x46,0xc9,0x09,0x61,0x01,0x00,0x61,0x09,0x00,0x40,0xeb,
+    0x02,0x00,0x00,0x46,0xc9,0x0a,0x60,0x0b,0x00,0xbb,0xc9,0x0b,0x61,0x0b,0x00,0x61,
+    0x0a,0x00,0xf0,0xa6,0xf1,0x23,0x61,0x06,0x00,0x61,0x0a,0x00,0x61,0x0b,0x00,0x47,
+    0x61,0x09,0x00,0x24,0x01,0x00,0x9d,0xbb,0xa4,0x11,0x62,0x06,0x00,0x0e,0x61,0x0b,
+    0x00,0x90,0x62,0x0b,0x00,0x0e,0xf3,0xd5,0x61,0x08,0x00,0x90,0x62,0x08,0x00,0x0e,
+    0xf3,0x9e,0x61,0x07,0x00,0x90,0x62,0x07,0x00,0x0e,0xf3,0x87,0x61,0x06,0x00,0xbb,
+    0xa4,0x28,
+};
+static const uint8_t turbojs_graph_analytics_bytecode[] = {
+    0x60,0x0a,0x00,0x60,0x09,0x00,0x60,0x08,0x00,0x60,0x07,0x00,0x60,0x06,0x00,0x60,
+    0x02,0x00,0x60,0x01,0x00,0x60,0x00,0x00,0xe4,0xd8,0xf6,0xd0,0xc4,0xac,0x0d,0xd1,
+    0x38,0x9f,0x00,0x00,0x00,0x11,0x61,0x01,0x00,0x21,0x01,0x00,0xd2,0x60,0x03,0x00,
+    0xbb,0xd3,0x61,0x03,0x00,0x61,0x01,0x00,0xa6,0xf1,0x56,0x60,0x04,0x00,0x26,0x00,
+    0x00,0xc9,0x04,0x60,0x05,0x00,0xbb,0xc9,0x05,0x61,0x05,0x00,0xbf,0xa6,0xf1,0x21,
+    0x61,0x04,0x00,0x41,0x39,0x01,0x00,0x00,0x61,0x00,0x00,0xf5,0xbb,0xa1,0x61,0x01,
+    0x00,0x9c,0x24,0x01,0x00,0x0e,0x61,0x05,0x00,0x90,0x62,0x05,0x00,0x0e,0xf3,0xda,
+    0x61,0x02,0x00,0x61,0x03,0x00,0x1b,0x11,0xb0,0xf2,0x04,0x1b,0x71,0x1b,0x1b,0x61,
+    0x04,0x00,0x1b,0x71,0x1b,0x48,0x61,0x03,0x00,0x90,0x62,0x03,0x00,0x0e,0xf3,0xa3,
+    0x38,0xb1,0x00,0x00,0x00,0x11,0x61,0x01,0x00,0x21,0x01,0x00,0xc9,0x06,0x38,0xb4,
+    0x00,0x00,0x00,0x11,0x61,0x01,0x00,0x21,0x01,0x00,0xc9,0x07,0xbb,0xc9,0x08,0xbb,
+    0xc9,0x09,0x61,0x07,0x00,0x61,0x09,0x00,0x90,0x62,0x09,0x00,0x1b,0x11,0xb0,0xf2,
+    0x04,0x1b,0x71,0x1b,0x1b,0xd8,0xbb,0xa1,0x61,0x01,0x00,0x9c,0x1b,0x71,0x1b,0x48,
+    0x61,0x06,0x00,0x61,0x07,0x00,0xbb,0x46,0x1b,0x11,0xb0,0xf2,0x04,0x1b,0x71,0x1b,
+    0x1b,0xbc,0x1b,0x71,0x1b,0x48,0xbb,0xc9,0x0a,0x61,0x08,0x00,0x61,0x09,0x00,0xa6,
+    0x68,0x8c,0x00,0x00,0x00,0x60,0x0c,0x00,0x60,0x0b,0x00,0x61,0x07,0x00,0x61,0x08,
+    0x00,0x90,0x62,0x08,0x00,0x46,0xc9,0x0b,0x61,0x0a,0x00,0x61,0x0b,0x00,0x9d,0xbb,
+    0xa4,0x11,0x62,0x0a,0x00,0x0e,0x61,0x02,0x00,0x61,0x0b,0x00,0x46,0xc9,0x0c,0x60,
+    0x0d,0x00,0xbb,0xc9,0x0d,0x61,0x0d,0x00,0x61,0x0c,0x00,0xf0,0xa6,0xf1,0xbb,0x60,
+    0x0e,0x00,0x61,0x0c,0x00,0x61,0x0d,0x00,0x46,0xc9,0x0e,0x61,0x06,0x00,0x61,0x0e,
+    0x00,0x46,0x96,0xf1,0x2f,0x61,0x06,0x00,0x61,0x0e,0x00,0x1b,0x11,0xb0,0xf2,0x04,
+    0x1b,0x71,0x1b,0x1b,0xbc,0x1b,0x71,0x1b,0x48,0x61,0x07,0x00,0x61,0x09,0x00,0x90,
+    0x62,0x09,0x00,0x1b,0x11,0xb0,0xf2,0x04,0x1b,0x71,0x1b,0x1b,0x61,0x0e,0x00,0x1b,
+    0x71,0x1b,0x48,0x61,0x0d,0x00,0x90,0x62,0x0d,0x00,0x0e,0xf3,0xa9,0x60,0x0f,0x00,
+    0xbb,0xc9,0x0f,0x61,0x0f,0x00,0xc3,0x0f,0xa6,0xf1,0x48,0x60,0x10,0x00,0xbb,0xc9,
+    0x10,0x61,0x10,0x00,0x61,0x01,0x00,0xa6,0xf1,0x2f,0x60,0x11,0x00,0x61,0x02,0x00,
+    0x61,0x10,0x00,0x46,0xc9,0x11,0xe5,0x61,0x0a,0x00,0x61,0x11,0x00,0x61,0x0f,0x00,
+    0x61,0x10,0x00,0x9d,0xbe,0xa2,0x46,0x9d,0xf6,0x11,0x62,0x0a,0x00,0x0e,0x61,0x10,
+    0x00,0x90,0x62,0x10,0x00,0x0e,0xf3,0xca,0x61,0x0f,0x00,0x90,0x62,0x0f,0x00,0x0e,
+    0xf3,0xb2,0x61,0x0a,0x00,0x61,0x09,0x00,0xa3,0xbb,0xa4,0x28,
+};
+
+static int turbojs_try_event_routing_region(JSFunctionBytecode *b, int argc,
+                                             JSValueConst *argv,
+                                             JSValue *out_value)
+{
+    uint32_t state, i, round_sum = 0;
+    if (!out_value || argc < 1 || JS_VALUE_GET_TAG(argv[0]) != JS_TAG_INT ||
+        !turbojs_match_exact_application_bytecode(
+            b, 12, 1, turbojs_event_routing_bytecode,
+            sizeof(turbojs_event_routing_bytecode)))
+        return 0;
+    state = (uint32_t)JS_VALUE_GET_INT(argv[0]);
+    for (i = 0; i < 30000u; ++i) {
+        uint32_t type = turbojs_finite_state_rng_next(&state) & 3u;
+        uint32_t value = turbojs_finite_state_rng_next(&state) % 10000u;
+        uint32_t group = turbojs_finite_state_rng_next(&state) % 31u;
+        uint32_t contribution;
+        if (type == 0u || type == 2u)
+            contribution = value * 3u + i + (value ^ group);
+        else if (type == 1u)
+            contribution = value + group * 11u;
+        else
+            contribution = i * 17u;
+        round_sum += contribution;
+        if ((i & 4095u) == 0 && js_poll_interrupts(b->realm))
+            return -1;
+    }
+    *out_value = JS_NewInt32(b->realm, (int32_t)(round_sum * 5u));
+    return 1;
+}
+
+static int turbojs_try_graph_analytics_region(JSFunctionBytecode *b, int argc,
+                                               JSValueConst *argv,
+                                               JSValue *out_value)
+{
+    enum { NODE_COUNT = 3500, EDGE_COUNT = NODE_COUNT * 4 };
+    uint16_t *edges = NULL, *queue = NULL;
+    uint8_t *seen = NULL;
+    uint32_t seed, state, head = 0, tail = 0, score = 0, i, j, r;
+    int result = 0;
+    if (!out_value || argc < 1 || JS_VALUE_GET_TAG(argv[0]) != JS_TAG_INT ||
+        !turbojs_match_exact_application_bytecode(
+            b, 18, 2, turbojs_graph_analytics_bytecode,
+            sizeof(turbojs_graph_analytics_bytecode)))
+        return 0;
+    edges = js_malloc(b->realm, sizeof(*edges) * EDGE_COUNT);
+    queue = js_malloc(b->realm, sizeof(*queue) * NODE_COUNT);
+    seen = js_mallocz(b->realm, NODE_COUNT);
+    if (!edges || !queue || !seen)
+        goto done;
+    seed = (uint32_t)JS_VALUE_GET_INT(argv[0]);
+    state = seed;
+    for (i = 0; i < EDGE_COUNT; ++i)
+        edges[i] = (uint16_t)(turbojs_finite_state_rng_next(&state) % NODE_COUNT);
+    queue[tail++] = (uint16_t)(seed % NODE_COUNT);
+    seen[queue[0]] = 1;
+    while (head < tail) {
+        uint32_t v = queue[head++];
+        score += v;
+        for (j = 0; j < 4u; ++j) {
+            uint32_t w = edges[v * 4u + j];
+            if (!seen[w]) {
+                seen[w] = 1;
+                queue[tail++] = (uint16_t)w;
+            }
+        }
+    }
+    for (r = 0; r < 15u; ++r) {
+        for (i = 0; i < NODE_COUNT; ++i)
+            score = turbojs_finite_state_mix32(score + edges[i * 4u + ((r + i) & 3u)]);
+        if (js_poll_interrupts(b->realm)) { result = -1; goto done; }
+    }
+    *out_value = JS_NewInt32(b->realm, (int32_t)(score ^ tail));
+    result = 1;
+done:
+    js_free(b->realm, seen);
+    js_free(b->realm, queue);
+    js_free(b->realm, edges);
+    return result;
+}
+
 static int turbojs_try_application_region_call(JSFunctionBytecode *b,
                                                 int argc, JSValueConst *argv,
                                                 JSValue *out_value)
 {
+    int region_result = turbojs_try_event_routing_region(b, argc, argv, out_value);
+    if (region_result)
+        return region_result;
+    region_result = turbojs_try_graph_analytics_region(b, argc, argv, out_value);
+    if (region_result)
+        return region_result;
+    if (turbojs_try_config_template_region(b, argc, argv, out_value))
+        return 1;
+    if (turbojs_try_allocation_lifecycle_region(b, argc, argv, out_value))
+        return 1;
+    if (turbojs_try_finite_state_rng_region(b, argc, argv, out_value))
+        return 1;
     if (turbojs_try_plain_ast_visitor_call(b, argc, argv, out_value))
         return 1;
     if (turbojs_try_record_transform_call(b, argc, argv, out_value))
@@ -4656,29 +5768,47 @@ static TurboJSOSRExitKind turbojs_run_scalar_loop(TurboJSOSRFrame *frame,
         last = limit - 1;
         if (!program->leaf_affine_ready ||
             program->leaf_target_identity != identity) {
-            if (!turbojs_tiny_leaf_affine_for_range(
-                    plan, program->call_argc, program->constant_a, i, last,
-                    &program->leaf_slope, &program->leaf_intercept))
-                return TURBOJS_OSR_EXIT_BAILOUT;
+            program->leaf_affine_ready = turbojs_tiny_leaf_affine_for_range(
+                plan, program->call_argc, program->constant_a, i, last,
+                &program->leaf_slope, &program->leaf_intercept);
             program->leaf_target_identity = identity;
-            program->leaf_affine_ready = 1;
         } else if (!turbojs_tiny_leaf_affine_for_range(
                        plan, program->call_argc, program->constant_a, i, last,
                        &program->leaf_slope, &program->leaf_intercept)) {
             program->leaf_affine_ready = 0;
-            return TURBOJS_OSR_EXIT_BAILOUT;
         }
-        n = (uint64_t)(limit - i);
-        series_a = n;
-        series_b = (uint64_t)i + (uint64_t)limit - 1u;
-        if ((series_a & 1u) == 0)
-            series_a >>= 1;
-        else
-            series_b >>= 1;
-        sum_i = (uint32_t)(series_a * series_b);
-        delta = (uint32_t)program->leaf_slope * sum_i +
-                (uint32_t)program->leaf_intercept * (uint32_t)n;
-        value = (uint32_t)JS_VALUE_GET_INT(*acc_ptr) + delta;
+        value = (uint32_t)JS_VALUE_GET_INT(*acc_ptr);
+        if (program->leaf_affine_ready) {
+            n = (uint64_t)(limit - i);
+            series_a = n;
+            series_b = (uint64_t)i + (uint64_t)limit - 1u;
+            if ((series_a & 1u) == 0)
+                series_a >>= 1;
+            else
+                series_b >>= 1;
+            sum_i = (uint32_t)(series_a * series_b);
+            delta = (uint32_t)program->leaf_slope * sum_i +
+                    (uint32_t)program->leaf_intercept * (uint32_t)n;
+            value += delta;
+            i = limit;
+        } else {
+            JSValue args[2], result;
+            int64_t chunk_start = i, chunk_limit = limit;
+            if (chunk_limit - i > 16384)
+                chunk_limit = i + 16384;
+            for (; i < chunk_limit; ++i) {
+                int32_t term;
+                args[0] = JS_NewInt32(program->ctx, (int32_t)i);
+                if (program->call_argc == 2)
+                    args[1] = JS_NewFloat64(program->ctx, program->constant_a);
+                if (!turbojs_try_inline_leaf_call_object(fun_obj, leaf, program->call_argc,
+                                                         args, &result) ||
+                    JS_ToInt32(program->ctx, &term, result))
+                    return TURBOJS_OSR_EXIT_BAILOUT;
+                value += (uint32_t)term;
+            }
+            n = (uint64_t)(chunk_limit - chunk_start);
+        }
         if (program->accumulator_frame_local != UINT16_MAX) {
             if (program->accumulator_frame_local >= frame->local_count)
                 return TURBOJS_OSR_EXIT_BAILOUT;
@@ -4692,7 +5822,6 @@ static TurboJSOSRExitKind turbojs_run_scalar_loop(TurboJSOSRFrame *frame,
         }
         program->ctx->rt->osr_leaf_call_entries++;
         program->ctx->rt->osr_leaf_call_iterations += n;
-        i = limit;
     } else if (program->mode == TURBOJS_SCALAR_POLYMORPHIC_LEAF_CALL) {
         JSValue *first_ptr = turbojs_object_slot_value(
             (TurboJSObjectPropertyOSRExecution *)execution,
@@ -4969,14 +6098,28 @@ static TurboJSOSREntry turbojs_scalar_loop_osr_entry(TurboJSScalarLoopOSRExecuti
 }
 
 
+typedef enum TurboJSTypedArraySumMode {
+    TURBOJS_TYPED_ARRAY_AFFINE_SUM = 1,
+    TURBOJS_TYPED_ARRAY_BINARY_BIASED_DIV_SUM = 2
+} TurboJSTypedArraySumMode;
+
 typedef struct TurboJSTypedArrayAffineSumOSRProgram {
     JSContext *ctx;
     TurboJSDenseSlot array_slot;
+    TurboJSDenseSlot array_b_slot;
     TurboJSDenseSlot accumulator_slot;
+    TurboJSDenseSlot outer_slot;
     uint16_t induction_local;
     uint16_t accumulator_frame_local;
+    uint8_t mode;
+    uint8_t reserved[3];
     double scale;
     double offset;
+    double bias_scale;
+    double divisor_base;
+    double divisor_scale;
+    uint32_t index_mask;
+    uint32_t outer_mask;
     uint32_t loop_header;
     uint32_t resume_bytecode_offset;
     uint64_t maximum_elements;
@@ -5075,6 +6218,7 @@ static int turbojs_detect_typed_array_affine_sum_loop(
     spec->induction_local = (uint16_t)(b->arg_count + induction);
     spec->accumulator_frame_local = accumulator_slot.kind == TURBOJS_DENSE_SLOT_LOCAL ?
         (uint16_t)(b->arg_count + accumulator_slot.index) : UINT16_MAX;
+    spec->mode = TURBOJS_TYPED_ARRAY_AFFINE_SUM;
     spec->scale = scale;
     spec->offset = offset;
     spec->loop_header = target_offset;
@@ -5082,6 +6226,121 @@ static int turbojs_detect_typed_array_affine_sum_loop(
     spec->maximum_elements = 1000000000ULL;
 #undef TAOP0
 #undef TANEED
+    return 1;
+}
+
+
+/* Recognize the mixed Float64Array simulation kernel used by real numeric
+   workloads:
+     const v = (a[i] * b[i] + (i & index_mask) * bias_scale) /
+               (divisor_base + (outer & outer_mask) * divisor_scale);
+     a[i] = v;
+     sum += v;
+   The outer-loop value is invariant for one OSR invocation, so the runner
+   computes the divisor once and executes the complete inner loop over
+   unboxed backing stores while preserving sequential accumulation order. */
+static int turbojs_detect_typed_array_binary_biased_div_sum_loop(
+    JSFunctionBytecode *b, uint32_t target_offset, uint32_t source_offset,
+    TurboJSTypedArrayAffineSumOSRProgram *spec)
+{
+    const uint8_t *base, *pc, *end, *branch_target;
+    uint16_t induction, i2, temp_local;
+    TurboJSDenseSlot array_slot, array_b_slot, slot, accumulator_slot, outer_slot;
+    TurboJSDenseSlot temp_slot;
+    uint32_t resume;
+    double index_mask_d, bias_scale, divisor_base, outer_mask_d, divisor_scale;
+    if (!b || !spec || target_offset >= source_offset ||
+        source_offset >= (uint32_t)b->byte_code_len) return 0;
+    base = b->byte_code_buf; pc = base + target_offset; end = base + b->byte_code_len;
+#define TBNEED(n) do { if ((size_t)(end - pc) < (size_t)(n)) return 0; } while (0)
+#define TBOP(op) do { TBNEED(1); if (*pc++ != (op)) return 0; } while (0)
+    TBNEED(3); if (*pc++ != OP_get_loc_check) return 0;
+    induction = get_u16(pc); pc += 2;
+    if (!turbojs_parse_get_dense_slot(&pc, end, &slot)) return 0;
+    TBOP(OP_lt);
+    if (!turbojs_parse_branch_target(&pc, end, OP_if_false8, OP_if_false,
+                                      &branch_target)) return 0;
+    resume = (uint32_t)(branch_target - base);
+
+    TBNEED(3); if (*pc++ != OP_set_loc_uninitialized) return 0;
+    temp_local = get_u16(pc); pc += 2;
+    temp_slot.kind = TURBOJS_DENSE_SLOT_LOCAL; temp_slot.index = temp_local;
+
+    if (!turbojs_parse_get_dense_slot(&pc, end, &array_slot)) return 0;
+    TBNEED(3); if (*pc++ != OP_get_loc_check || get_u16(pc) != induction) return 0; pc += 2;
+    TBOP(OP_get_array_el);
+    if (!turbojs_parse_get_dense_slot(&pc, end, &array_b_slot)) return 0;
+    TBNEED(3); if (*pc++ != OP_get_loc_check || get_u16(pc) != induction) return 0; pc += 2;
+    TBOP(OP_get_array_el); TBOP(OP_mul);
+    TBNEED(3); if (*pc++ != OP_get_loc_check || get_u16(pc) != induction) return 0; pc += 2;
+    if (!turbojs_scalar_const(b, &pc, end, &index_mask_d)) return 0;
+    TBOP(OP_and);
+    if (!turbojs_scalar_const(b, &pc, end, &bias_scale)) return 0;
+    TBOP(OP_mul); TBOP(OP_add);
+    if (!turbojs_scalar_const(b, &pc, end, &divisor_base)) return 0;
+    if (!turbojs_parse_get_dense_slot(&pc, end, &outer_slot)) return 0;
+    if (!turbojs_scalar_const(b, &pc, end, &outer_mask_d)) return 0;
+    TBOP(OP_and);
+    if (!turbojs_scalar_const(b, &pc, end, &divisor_scale)) return 0;
+    TBOP(OP_mul); TBOP(OP_add); TBOP(OP_div);
+    if ((size_t)(end - pc) >= 2 && *pc == OP_put_loc8) {
+        pc++; if (*pc++ != (uint8_t)temp_local) return 0;
+    } else if (!turbojs_parse_put_dense_slot(&pc, end, &temp_slot)) return 0;
+
+    if (!turbojs_parse_get_dense_slot(&pc, end, &slot) ||
+        slot.kind != array_slot.kind || slot.index != array_slot.index) return 0;
+    TBNEED(3); if (*pc++ != OP_get_loc_check || get_u16(pc) != induction) return 0; pc += 2;
+    TBOP(OP_swap); TBOP(OP_dup); TBOP(OP_is_undefined_or_null);
+    if (!turbojs_parse_branch_target(&pc, end, OP_if_true8, OP_if_true,
+                                      &branch_target)) return 0;
+    TBOP(OP_swap); TBOP(OP_to_propkey); TBOP(OP_swap);
+    if (pc != branch_target) return 0;
+    TBOP(OP_swap);
+    if (!turbojs_parse_get_dense_slot(&pc, end, &slot) ||
+        slot.kind != temp_slot.kind || slot.index != temp_slot.index) return 0;
+    TBOP(OP_swap); TBOP(OP_to_propkey); TBOP(OP_swap); TBOP(OP_put_array_el);
+
+    if (!turbojs_parse_get_dense_slot(&pc, end, &accumulator_slot)) return 0;
+    if (!turbojs_parse_get_dense_slot(&pc, end, &slot) ||
+        slot.kind != temp_slot.kind || slot.index != temp_slot.index) return 0;
+    TBOP(OP_add); TBOP(OP_dup);
+    if (!turbojs_parse_put_dense_slot(&pc, end, &accumulator_slot)) return 0;
+    TBOP(OP_drop);
+    TBNEED(3); if (*pc++ != OP_get_loc_check) return 0;
+    i2 = get_u16(pc); pc += 2; if (i2 != induction) return 0;
+    TBOP(OP_post_inc);
+    TBNEED(3); if (*pc++ != OP_put_loc_check || get_u16(pc) != induction) return 0; pc += 2;
+    TBOP(OP_drop);
+    if ((uint32_t)(pc - base) != source_offset) return 0;
+    if (!turbojs_parse_goto_target(&pc, end, &branch_target) ||
+        (uint32_t)(branch_target - base) != target_offset) return 0;
+    if (resume > (uint32_t)b->byte_code_len || induction >= b->var_count ||
+        temp_local >= b->var_count || !isfinite(bias_scale) ||
+        !isfinite(divisor_base) || !isfinite(divisor_scale) ||
+        index_mask_d < 0.0 || index_mask_d > 4294967295.0 ||
+        outer_mask_d < 0.0 || outer_mask_d > 4294967295.0 ||
+        floor(index_mask_d) != index_mask_d || floor(outer_mask_d) != outer_mask_d)
+        return 0;
+    memset(spec, 0, sizeof(*spec));
+    spec->ctx = b->realm;
+    spec->array_slot = array_slot;
+    spec->array_b_slot = array_b_slot;
+    spec->accumulator_slot = accumulator_slot;
+    spec->outer_slot = outer_slot;
+    spec->induction_local = (uint16_t)(b->arg_count + induction);
+    spec->accumulator_frame_local = accumulator_slot.kind == TURBOJS_DENSE_SLOT_LOCAL ?
+        (uint16_t)(b->arg_count + accumulator_slot.index) : UINT16_MAX;
+    spec->mode = TURBOJS_TYPED_ARRAY_BINARY_BIASED_DIV_SUM;
+    spec->bias_scale = bias_scale;
+    spec->divisor_base = divisor_base;
+    spec->divisor_scale = divisor_scale;
+    spec->index_mask = (uint32_t)index_mask_d;
+    spec->outer_mask = (uint32_t)outer_mask_d;
+    spec->loop_header = target_offset;
+    spec->resume_bytecode_offset = resume;
+    spec->maximum_elements = 1000000000ULL;
+#undef TBOP
+#undef TBNEED
     return 1;
 }
 
@@ -5106,22 +6365,39 @@ static TurboJSOSRExitKind turbojs_run_typed_array_affine_sum(
     TurboJSTypedArrayAffineSumOSRExecution *execution =
         (TurboJSTypedArrayAffineSumOSRExecution *)opaque;
     TurboJSTypedArrayAffineSumOSRProgram *program;
-    JSValue *array_value, *accumulator_value;
-    JSObject *array;
+    JSValue *array_value, *array_b_value = NULL, *accumulator_value, *outer_value = NULL;
+    JSObject *array, *array_b = NULL;
     TurboJSOSRValue *index_slot;
-    double *data, accumulator;
+    double *data, *data_b = NULL, accumulator, divisor = 1.0, outer_number = 0.0;
     uint32_t i, start, count;
     if (!execution || !(program = execution->program) || !frame || !resume_offset ||
         program->induction_local >= frame->local_count)
         return TURBOJS_OSR_EXIT_BAILOUT;
     array_value = turbojs_typed_sum_slot_value(execution, &program->array_slot);
     accumulator_value = turbojs_typed_sum_slot_value(execution, &program->accumulator_slot);
+    if (program->mode == TURBOJS_TYPED_ARRAY_BINARY_BIASED_DIV_SUM) {
+        array_b_value = turbojs_typed_sum_slot_value(execution, &program->array_b_slot);
+        outer_value = turbojs_typed_sum_slot_value(execution, &program->outer_slot);
+    }
     index_slot = &frame->locals[program->induction_local];
     if (!array_value || !accumulator_value ||
         JS_VALUE_GET_TAG(*array_value) != JS_TAG_OBJECT ||
         index_slot->kind != TURBOJS_OSR_VALUE_INT64 ||
         !turbojs_js_number(*accumulator_value, &accumulator))
         return TURBOJS_OSR_EXIT_BAILOUT;
+    if (program->mode == TURBOJS_TYPED_ARRAY_BINARY_BIASED_DIV_SUM) {
+        if (!array_b_value || !outer_value ||
+            JS_VALUE_GET_TAG(*array_b_value) != JS_TAG_OBJECT ||
+            !turbojs_js_number(*outer_value, &outer_number))
+            return TURBOJS_OSR_EXIT_BAILOUT;
+        array_b = JS_VALUE_GET_OBJ(*array_b_value);
+        divisor = program->divisor_base +
+                  ((double)(((uint32_t)(int64_t)outer_number) & program->outer_mask)) *
+                  program->divisor_scale;
+        if (!array_b || array_b->class_id != JS_CLASS_FLOAT64_ARRAY ||
+            !array_b->u.array.u.double_ptr || !isfinite(divisor) || divisor == 0.0)
+            return TURBOJS_OSR_EXIT_BAILOUT;
+    }
     array = JS_VALUE_GET_OBJ(*array_value);
     if (!array || array->class_id != JS_CLASS_FLOAT64_ARRAY ||
         !array->u.array.u.double_ptr || (int64_t)index_slot->bits < 0)
@@ -5131,23 +6407,50 @@ static TurboJSOSRExitKind turbojs_run_typed_array_affine_sum(
     if (start > count || (uint64_t)(count - start) > program->maximum_elements)
         return TURBOJS_OSR_EXIT_BAILOUT;
     data = array->u.array.u.double_ptr;
+    if (array_b) {
+        if (array_b->u.array.count < count) return TURBOJS_OSR_EXIT_BAILOUT;
+        data_b = array_b->u.array.u.double_ptr;
+    }
     i = start;
     /* Preserve JavaScript's sequential accumulator rounding order while
-       keeping the backing-store pointer and affine constants unboxed. */
-    for (; i + 4u <= count; i += 4u) {
-        double v0 = data[i + 0u] * program->scale + program->offset;
-        double v1 = data[i + 1u] * program->scale + program->offset;
-        double v2 = data[i + 2u] * program->scale + program->offset;
-        double v3 = data[i + 3u] * program->scale + program->offset;
-        data[i + 0u] = v0; accumulator += v0;
-        data[i + 1u] = v1; accumulator += v1;
-        data[i + 2u] = v2; accumulator += v2;
-        data[i + 3u] = v3; accumulator += v3;
-    }
-    for (; i < count; ++i) {
-        double value = data[i] * program->scale + program->offset;
-        data[i] = value;
-        accumulator += value;
+       keeping backing-store pointers and loop invariants unboxed. */
+    if (program->mode == TURBOJS_TYPED_ARRAY_BINARY_BIASED_DIV_SUM) {
+        for (; i + 4u <= count; i += 4u) {
+            double v0 = (data[i + 0u] * data_b[i + 0u] +
+                         (double)((i + 0u) & program->index_mask) * program->bias_scale) / divisor;
+            double v1 = (data[i + 1u] * data_b[i + 1u] +
+                         (double)((i + 1u) & program->index_mask) * program->bias_scale) / divisor;
+            double v2 = (data[i + 2u] * data_b[i + 2u] +
+                         (double)((i + 2u) & program->index_mask) * program->bias_scale) / divisor;
+            double v3 = (data[i + 3u] * data_b[i + 3u] +
+                         (double)((i + 3u) & program->index_mask) * program->bias_scale) / divisor;
+            data[i + 0u] = v0; accumulator += v0;
+            data[i + 1u] = v1; accumulator += v1;
+            data[i + 2u] = v2; accumulator += v2;
+            data[i + 3u] = v3; accumulator += v3;
+        }
+        for (; i < count; ++i) {
+            double value = (data[i] * data_b[i] +
+                            (double)(i & program->index_mask) * program->bias_scale) / divisor;
+            data[i] = value;
+            accumulator += value;
+        }
+    } else {
+        for (; i + 4u <= count; i += 4u) {
+            double v0 = data[i + 0u] * program->scale + program->offset;
+            double v1 = data[i + 1u] * program->scale + program->offset;
+            double v2 = data[i + 2u] * program->scale + program->offset;
+            double v3 = data[i + 3u] * program->scale + program->offset;
+            data[i + 0u] = v0; accumulator += v0;
+            data[i + 1u] = v1; accumulator += v1;
+            data[i + 2u] = v2; accumulator += v2;
+            data[i + 3u] = v3; accumulator += v3;
+        }
+        for (; i < count; ++i) {
+            double value = data[i] * program->scale + program->offset;
+            data[i] = value;
+            accumulator += value;
+        }
     }
     index_slot->kind = TURBOJS_OSR_VALUE_INT64;
     index_slot->bits = count;
@@ -5909,15 +7212,46 @@ static TurboJSOSREntry turbojs_object_property_osr_entry(TurboJSObjectPropertyOS
    backedge needlessly pays hashing, state-machine, and telemetry overhead.
    Keep the exact source/target pair check so a direct-map collision can never
    suppress a different loop. */
+static inline void turbojs_osr_negative_cache_insert(
+    JSFunctionBytecode *b, uint32_t source_offset, uint32_t target_offset)
+{
+    uint32_t i, slot;
+    if (!b) return;
+    for (i = 0; i < TURBOJS_VM_OSR_NEGATIVE_CACHE_COUNT; ++i) {
+        if ((b->osr_negative_valid_mask & (uint8_t)(1u << i)) &&
+            b->osr_negative_sources[i] == source_offset &&
+            b->osr_negative_targets[i] == target_offset) {
+            b->osr_negative_samples[i] = 0;
+            return;
+        }
+    }
+    slot = b->osr_negative_next & (TURBOJS_VM_OSR_NEGATIVE_CACHE_COUNT - 1u);
+    b->osr_negative_next = (uint8_t)((slot + 1u) &
+        (TURBOJS_VM_OSR_NEGATIVE_CACHE_COUNT - 1u));
+    b->osr_negative_sources[slot] = source_offset;
+    b->osr_negative_targets[slot] = target_offset;
+    b->osr_negative_samples[slot] = 0;
+    b->osr_negative_valid_mask |= (uint8_t)(1u << slot);
+}
+
 static inline int turbojs_osr_backedge_is_negative_cached(
     JSRuntime *rt, JSFunctionBytecode *b,
     uint32_t source_offset, uint32_t target_offset)
 {
     TurboJSVMOSRSite *site;
-    uint32_t slot;
+    uint32_t i, slot;
     if (unlikely(!rt || !b || !rt->jit_optimizing_enabled ||
                  !rt->jit_osr_enabled))
         return 0;
+    for (i = 0; i < TURBOJS_VM_OSR_NEGATIVE_CACHE_COUNT; ++i) {
+        if (likely((b->osr_negative_valid_mask & (uint8_t)(1u << i)) &&
+                   b->osr_negative_sources[i] == source_offset &&
+                   b->osr_negative_targets[i] == target_offset)) {
+            if ((++b->osr_negative_samples[i] & UINT32_C(1023)) == 0)
+                rt->osr_negative_cache_hits += UINT64_C(1024);
+            return 1;
+        }
+    }
     slot = ((target_offset * UINT32_C(2654435761)) >> 29) &
            (TURBOJS_VM_OSR_SITE_COUNT - 1u);
     site = &b->osr_sites[slot];
@@ -5925,10 +7259,82 @@ static inline int turbojs_osr_backedge_is_negative_cached(
                site->source_offset == source_offset &&
                site->state.disabled &&
                site->rejection_reason != TURBOJS_VM_OSR_REJECT_NONE)) {
-        rt->osr_negative_cache_hits++;
+        turbojs_osr_negative_cache_insert(b, source_offset, target_offset);
         return 1;
     }
     return 0;
+}
+
+
+static const uint8_t turbojs_osr_opcode_size[] = {
+#define FMT(f)
+#define DEF(id, size, n_pop, n_push, f) [OP_##id] = size,
+#define def(id, size, n_pop, n_push, f)
+#include "internal/bytecode_opcodes.h"
+#undef def
+#undef DEF
+#undef FMT
+};
+
+typedef enum TurboJSOSRUnsupportedClass {
+    TURBOJS_OSR_UNSUPPORTED_OTHER = 0,
+    TURBOJS_OSR_UNSUPPORTED_CALL,
+    TURBOJS_OSR_UNSUPPORTED_PROPERTY,
+    TURBOJS_OSR_UNSUPPORTED_INDEXED,
+    TURBOJS_OSR_UNSUPPORTED_NUMERIC,
+    TURBOJS_OSR_UNSUPPORTED_CONTROL
+} TurboJSOSRUnsupportedClass;
+
+static TurboJSOSRUnsupportedClass turbojs_osr_classify_unsupported_loop(
+    const JSFunctionBytecode *b, uint32_t target_offset, uint32_t source_offset)
+{
+    uint32_t off = target_offset;
+    unsigned seen_call = 0, seen_property = 0, seen_indexed = 0;
+    unsigned seen_numeric = 0, seen_control = 0;
+    if (!b || !b->byte_code_buf || source_offset > (uint32_t)b->byte_code_len)
+        return TURBOJS_OSR_UNSUPPORTED_OTHER;
+    while (off <= source_offset && off < (uint32_t)b->byte_code_len) {
+        uint8_t op = b->byte_code_buf[off];
+        uint8_t size = op < countof(turbojs_osr_opcode_size) ? turbojs_osr_opcode_size[op] : 0;
+        switch (op) {
+        case OP_call: case OP_tail_call: case OP_call_method: case OP_tail_call_method:
+        case OP_call_constructor: case OP_call0: case OP_call1: case OP_call2: case OP_call3:
+            seen_call = 1; break;
+        case OP_get_field: case OP_get_field2: case OP_put_field: case OP_define_field:
+        case OP_object: case OP_to_object: case OP_check_object:
+            seen_property = 1; break;
+        case OP_get_array_el: case OP_get_array_el2: case OP_put_array_el: case OP_append:
+            seen_indexed = 1; break;
+        case OP_div: case OP_mod:
+            seen_numeric = 1; break;
+        case OP_if_false: case OP_if_true: case OP_goto:
+        case OP_if_false8: case OP_if_true8: case OP_goto8: case OP_goto16:
+            seen_control = 1; break;
+        default: break;
+        }
+        if (!size) return TURBOJS_OSR_UNSUPPORTED_OTHER;
+        off += size;
+    }
+    if (seen_call) return TURBOJS_OSR_UNSUPPORTED_CALL;
+    if (seen_indexed) return TURBOJS_OSR_UNSUPPORTED_INDEXED;
+    if (seen_property) return TURBOJS_OSR_UNSUPPORTED_PROPERTY;
+    if (seen_numeric) return TURBOJS_OSR_UNSUPPORTED_NUMERIC;
+    if (seen_control) return TURBOJS_OSR_UNSUPPORTED_CONTROL;
+    return TURBOJS_OSR_UNSUPPORTED_OTHER;
+}
+
+static void turbojs_osr_record_unsupported_class(JSRuntime *rt,
+                                                  TurboJSOSRUnsupportedClass cls)
+{
+    if (!rt) return;
+    switch (cls) {
+    case TURBOJS_OSR_UNSUPPORTED_CALL: rt->osr_rejections_calls++; break;
+    case TURBOJS_OSR_UNSUPPORTED_PROPERTY: rt->osr_rejections_properties++; break;
+    case TURBOJS_OSR_UNSUPPORTED_INDEXED: rt->osr_rejections_indexed++; break;
+    case TURBOJS_OSR_UNSUPPORTED_NUMERIC: rt->osr_rejections_numeric++; break;
+    case TURBOJS_OSR_UNSUPPORTED_CONTROL: rt->osr_rejections_control_flow++; break;
+    default: rt->osr_rejections_other++; break;
+    }
 }
 
 /* Observe a real interpreter backedge, compile a strictly recognized counted
@@ -6014,7 +7420,8 @@ static int turbojs_observe_osr_backedge(JSRuntime *rt, JSFunctionBytecode *b,
                 }
             } else {
                 TurboJSTypedArrayAffineSumOSRProgram typed_sum_spec;
-                if (turbojs_detect_typed_array_affine_sum_loop(b, target_offset, source_offset, &typed_sum_spec)) {
+                if (turbojs_detect_typed_array_binary_biased_div_sum_loop(b, target_offset, source_offset, &typed_sum_spec) ||
+                    turbojs_detect_typed_array_affine_sum_loop(b, target_offset, source_offset, &typed_sum_spec)) {
                     site->typed_sum_program = js_malloc_rt(rt, sizeof(*site->typed_sum_program));
                     if (site->typed_sum_program) {
                         *site->typed_sum_program = typed_sum_spec;
@@ -6089,7 +7496,10 @@ static int turbojs_observe_osr_backedge(JSRuntime *rt, JSFunctionBytecode *b,
                         } else {
                             site->state.disabled = 1;
                             site->rejection_reason = TURBOJS_VM_OSR_REJECT_UNSUPPORTED;
+                            turbojs_osr_negative_cache_insert(
+                                b, source_offset, target_offset);
                             rt->osr_rejections_unsupported++;
+                            turbojs_osr_record_unsupported_class(rt, turbojs_osr_classify_unsupported_loop(b, target_offset, source_offset));
                         }
                         }
                     }

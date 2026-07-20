@@ -1,0 +1,71 @@
+{
+  "runs": 3,
+  "workloads": [
+    {
+      "workload": "numeric_simulation",
+      "baseline_ms": 3.5488439998589456,
+      "candidate_ms": 3.309178999857977,
+      "improvement_pct": 6.753325872044375
+    },
+    {
+      "workload": "order_processing",
+      "baseline_ms": 59.56680599995889,
+      "candidate_ms": 58.752273000078276,
+      "improvement_pct": 1.367427690988122
+    },
+    {
+      "workload": "ast_pipeline",
+      "baseline_ms": 16.734172999858856,
+      "candidate_ms": 16.04752600006759,
+      "improvement_pct": 4.1032622275212285
+    },
+    {
+      "workload": "event_routing",
+      "baseline_ms": 76.98921499983408,
+      "candidate_ms": 75.16070699994452,
+      "improvement_pct": 2.3750183709412975
+    },
+    {
+      "workload": "graph_analytics",
+      "baseline_ms": 20.54529399983585,
+      "candidate_ms": 17.406842000083998,
+      "improvement_pct": 15.275770693653381
+    },
+    {
+      "workload": "text_indexing",
+      "baseline_ms": 22.472307999851182,
+      "candidate_ms": 24.356211999896914,
+      "improvement_pct": -8.383224366888383
+    },
+    {
+      "workload": "collection_transforms",
+      "baseline_ms": 52.825577000156045,
+      "candidate_ms": 50.4177759999875,
+      "improvement_pct": 4.5580212027999885
+    },
+    {
+      "workload": "state_machine",
+      "baseline_ms": 49.596849999856204,
+      "candidate_ms": 41.628724000183865,
+      "improvement_pct": 16.065790467933834
+    },
+    {
+      "workload": "config_templates",
+      "baseline_ms": 179.79896600008942,
+      "candidate_ms": 177.01143300021067,
+      "improvement_pct": 1.5503609736428423
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "baseline_ms": 114.51378599996679,
+      "candidate_ms": 115.67099600005895,
+      "improvement_pct": -1.010542084507187
+    }
+  ],
+  "aggregate": {
+    "baseline_total_ms": 596.5918189992663,
+    "candidate_total_ms": 579.7616680003703,
+    "improvement_pct": 2.821049579112094,
+    "geometric_candidate_over_baseline": 0.9548271231707188
+  }
+}

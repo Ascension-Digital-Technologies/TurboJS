@@ -22,18 +22,20 @@ int main(void)
         " function mono(){var s=0,i;for(i=0;i<20000;i++)s=(s+leaf(i))|0;return s;}"
         " function poly(){var s=0,i,f;for(i=0;i<200;i++){f=(i&1)?leaf:other;s=(s+f(i))|0;}return s;}"
         " function imulLeaf(x){return Math.imul(x,5)|0;}"
+        " function branchLeaf(x){let y=(x*3)|0;if(y<10)return (y+1)|0;return (y-1)|0;}"
+        " function branchRun(){var s=0,i;for(i=0;i<20000;i++)s=(s+branchLeaf(i&7))|0;return s;}"
         " var before=0,after=0,j,oldImul=Math.imul;"
         " for(j=0;j<20000;j++)before=(before+imulLeaf(j))|0;"
         " Math.imul=function(){return 7;};"
         " for(j=0;j<1000;j++)after=(after+imulLeaf(j))|0;"
         " Math.imul=oldImul;"
-        " return [mono(),poly(),before,after];"
+        " return [mono(),poly(),before,after,branchRun()];"
         "})()";
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx;
-    JSValue result, mono_value, poly_value, imul_before_value, imul_after_value;
+    JSValue result, mono_value, poly_value, imul_before_value, imul_after_value, branch_value;
     TurboJSRuntimeJITStats stats;
-    int32_t mono = 0, poly = 0, imul_before = 0, imul_after = 0;
+    int32_t mono = 0, poly = 0, imul_before = 0, imul_after = 0, branch = 0;
 
     if (!rt)
         return 1;
@@ -54,15 +56,19 @@ int main(void)
     poly_value = JS_GetPropertyUint32(ctx, result, 1);
     imul_before_value = JS_GetPropertyUint32(ctx, result, 2);
     imul_after_value = JS_GetPropertyUint32(ctx, result, 3);
+    branch_value = JS_GetPropertyUint32(ctx, result, 4);
     if (JS_IsException(mono_value) || JS_IsException(poly_value) ||
         JS_IsException(imul_before_value) || JS_IsException(imul_after_value) ||
+        JS_IsException(branch_value) ||
         JS_ToInt32(ctx, &mono, mono_value) || JS_ToInt32(ctx, &poly, poly_value) ||
         JS_ToInt32(ctx, &imul_before, imul_before_value) ||
-        JS_ToInt32(ctx, &imul_after, imul_after_value)) {
+        JS_ToInt32(ctx, &imul_after, imul_after_value) ||
+        JS_ToInt32(ctx, &branch, branch_value)) {
         JS_FreeValue(ctx, mono_value);
         JS_FreeValue(ctx, poly_value);
         JS_FreeValue(ctx, imul_before_value);
         JS_FreeValue(ctx, imul_after_value);
+        JS_FreeValue(ctx, branch_value);
         JS_FreeValue(ctx, result);
         report_exception(ctx, "Relay result conversion failed");
         JS_FreeContext(ctx);
@@ -73,6 +79,7 @@ int main(void)
     JS_FreeValue(ctx, poly_value);
     JS_FreeValue(ctx, imul_before_value);
     JS_FreeValue(ctx, imul_after_value);
+    JS_FreeValue(ctx, branch_value);
     JS_FreeValue(ctx, result);
 
     stats = TurboJS_GetRuntimeJITStats(rt);
@@ -83,8 +90,8 @@ int main(void)
            (unsigned long long)stats.relay_call_invalidations,
            mono, poly);
     if (mono != 600110000 || poly != 42588 ||
-        imul_before != 999950000 || imul_after != 7000 ||
-        stats.relay_call_hits < 39000 || stats.relay_call_installs < 4) {
+        imul_before != 999950000 || imul_after != 7000 || branch != 210000 ||
+        stats.relay_call_hits < 39000 || stats.relay_call_installs < 5) {
         fprintf(stderr, "expected sustained two-target Relay hits and guarded Math.imul fallback\n");
         JS_FreeContext(ctx);
         JS_FreeRuntime(rt);

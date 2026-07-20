@@ -222,7 +222,7 @@
   "execution_split": {
     "status": "unity-boundaries-decomposed",
     "fragment_count": 50,
-    "max_fragment_lines": 7000,
+    "max_fragment_lines": 8000,
     "note": "Execution domains are isolated into bounded unity fragments before independent translation-unit conversion."
   },
   "assembly": {

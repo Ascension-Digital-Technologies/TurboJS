@@ -1,0 +1,91 @@
+{
+  "change": "adaptive fast-array capacity growth",
+  "methodology": "same-host A/B, 3 independent process runs, exact checksums",
+  "baseline": {
+    "geometric_mean_ratio": 16.16672171304877,
+    "median_ratio": 20.110196686836066,
+    "turbojs_total_ms": 651.9663329990581,
+    "node_total_ms": 39.042612000000084,
+    "total_ratio": 16.69884005196826
+  },
+  "optimized": {
+    "geometric_mean_ratio": 15.590951199510258,
+    "median_ratio": 18.105480465182044,
+    "turbojs_total_ms": 618.5088229989633,
+    "node_total_ms": 38.969452,
+    "total_ratio": 15.871632554621588
+  },
+  "geometric_mean_improvement_percent": 3.5614549675447535,
+  "workloads": [
+    {
+      "workload": "numeric_simulation",
+      "baseline_turbojs_ms": 27.4216919997707,
+      "optimized_turbojs_ms": 25.850877000018954,
+      "baseline_ratio": 41.97328386205467,
+      "optimized_ratio": 45.65542362737056
+    },
+    {
+      "workload": "order_processing",
+      "baseline_turbojs_ms": 42.58968899957836,
+      "optimized_turbojs_ms": 40.608441999182105,
+      "baseline_ratio": 4.5182255878327995,
+      "optimized_ratio": 4.312294066962813
+    },
+    {
+      "workload": "ast_pipeline",
+      "baseline_turbojs_ms": 10.896808000281453,
+      "optimized_turbojs_ms": 10.556646999903023,
+      "baseline_ratio": 9.000716964532806,
+      "optimized_ratio": 8.199216477506738
+    },
+    {
+      "workload": "event_routing",
+      "baseline_turbojs_ms": 83.20538900000975,
+      "optimized_turbojs_ms": 78.45500199962407,
+      "baseline_ratio": 17.94465274277897,
+      "optimized_ratio": 13.84466726646828
+    },
+    {
+      "workload": "graph_analytics",
+      "baseline_turbojs_ms": 21.467999999877065,
+      "optimized_turbojs_ms": 20.65513800084591,
+      "baseline_ratio": 22.27574063089316,
+      "optimized_ratio": 22.366293663895807
+    },
+    {
+      "workload": "text_indexing",
+      "baseline_turbojs_ms": 21.233585000038147,
+      "optimized_turbojs_ms": 18.960068999789655,
+      "baseline_ratio": 4.185195463729894,
+      "optimized_ratio": 4.9973402964945635
+    },
+    {
+      "workload": "collection_transforms",
+      "baseline_turbojs_ms": 43.59739700006321,
+      "optimized_turbojs_ms": 40.27361600007862,
+      "baseline_ratio": 10.885858949312892,
+      "optimized_ratio": 8.44648467355053
+    },
+    {
+      "workload": "state_machine",
+      "baseline_turbojs_ms": 105.95238799974322,
+      "optimized_turbojs_ms": 106.97819400019944,
+      "baseline_ratio": 54.349301938703064,
+      "optimized_ratio": 58.8307205153727
+    },
+    {
+      "workload": "config_templates",
+      "baseline_turbojs_ms": 152.81718399981037,
+      "optimized_turbojs_ms": 143.3309639999643,
+      "baseline_ratio": 23.862364616187865,
+      "optimized_ratio": 22.66138742474011
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "baseline_turbojs_ms": 142.7842009998858,
+      "optimized_turbojs_ms": 132.83987399935722,
+      "baseline_ratio": 30.251614286503727,
+      "optimized_ratio": 30.16969310174369
+    }
+  ]
+}

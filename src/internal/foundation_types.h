@@ -313,6 +313,16 @@ struct JSRuntime {
     int shape_hash_size;
     int shape_hash_count; /* number of hashed shapes */
     JSShape **shape_hash;
+    /* Small weak transition cache for the overwhelmingly common
+       shape + property -> successor shape lookup. Entries are invalidated
+       whenever either participating shape is destroyed. */
+    JSShape *shape_transition_source[64];
+    JSShape *shape_transition_target[64];
+    JSAtom shape_transition_atom[64];
+    uint8_t shape_transition_flags[64];
+    uint64_t shape_transition_hits;
+    uint64_t shape_transition_misses;
+    uint64_t shape_transition_fills;
     void *user_opaque;
     void *libc_opaque;
     JSRuntimeFinalizerState *finalizers;
@@ -409,6 +419,12 @@ struct JSRuntime {
     uint64_t osr_rejections_unsupported;
     uint64_t osr_rejections_allocation;
     uint64_t osr_rejections_backend;
+    uint64_t osr_rejections_calls;
+    uint64_t osr_rejections_properties;
+    uint64_t osr_rejections_indexed;
+    uint64_t osr_rejections_numeric;
+    uint64_t osr_rejections_control_flow;
+    uint64_t osr_rejections_other;
     uint64_t osr_leaf_call_entries;
     uint64_t osr_leaf_call_iterations;
     uint64_t osr_int32_mix_entries;
@@ -1000,6 +1016,16 @@ typedef struct JSFunctionBytecode {
        sites pay only a predictable null-pointer branch. Entries retain only
        stable numeric identities and never own callee pointers. */
     TurboJSVMRelayCallICEntry *relay_call_ic;
+    /* Small exact rejected-backedge cache. Application functions often contain
+       several hot loops, especially when stable calls currently block Redline.
+       Keeping four exact source/target pairs avoids thrashing a single memo and
+       bypasses hashing plus OSR-site probing on later iterations. */
+#define TURBOJS_VM_OSR_NEGATIVE_CACHE_COUNT 4u
+    uint32_t osr_negative_sources[TURBOJS_VM_OSR_NEGATIVE_CACHE_COUNT];
+    uint32_t osr_negative_targets[TURBOJS_VM_OSR_NEGATIVE_CACHE_COUNT];
+    uint32_t osr_negative_samples[TURBOJS_VM_OSR_NEGATIVE_CACHE_COUNT];
+    uint8_t osr_negative_valid_mask;
+    uint8_t osr_negative_next;
     TurboJSVMOSRSite osr_sites[TURBOJS_VM_OSR_SITE_COUNT];
 } JSFunctionBytecode;
 
@@ -1202,7 +1228,7 @@ typedef struct JSProperty {
     } u;
 } JSProperty;
 
-#define JS_PROP_INITIAL_SIZE 2
+#define JS_PROP_INITIAL_SIZE 4
 #define JS_PROP_INITIAL_HASH_SIZE 4 /* must be a power of two */
 
 typedef struct JSShapeProperty {
@@ -1228,6 +1254,41 @@ struct JSShape {
     uint32_t hash_table[]; /* prop_hash_mask + 1 elements, then prop[prop_size] */
 };
 
+
+typedef enum TurboJSArrayElementKind {
+    TURBOJS_ARRAY_EMPTY = 0,
+    TURBOJS_ARRAY_PACKED_INT32 = 1,
+    TURBOJS_ARRAY_PACKED_NUMBER = 2,
+    TURBOJS_ARRAY_PACKED_VALUE = 3,
+    TURBOJS_ARRAY_HOLEY = 4
+} TurboJSArrayElementKind;
+
+static inline uint8_t turbojs_array_value_kind(JSValueConst value)
+{
+    int tag = JS_VALUE_GET_NORM_TAG(value);
+    if (JS_IsUninitialized(value))
+        return TURBOJS_ARRAY_HOLEY;
+    if (tag == JS_TAG_INT)
+        return TURBOJS_ARRAY_PACKED_INT32;
+    if (tag == JS_TAG_FLOAT64)
+        return TURBOJS_ARRAY_PACKED_NUMBER;
+    return TURBOJS_ARRAY_PACKED_VALUE;
+}
+
+static inline uint8_t turbojs_array_merge_kind(uint8_t current, JSValueConst value)
+{
+    uint8_t incoming = turbojs_array_value_kind(value);
+    if (current == TURBOJS_ARRAY_HOLEY || incoming == TURBOJS_ARRAY_HOLEY)
+        return TURBOJS_ARRAY_HOLEY;
+    if (current == TURBOJS_ARRAY_EMPTY)
+        return incoming;
+    if (current == TURBOJS_ARRAY_PACKED_VALUE || incoming == TURBOJS_ARRAY_PACKED_VALUE)
+        return TURBOJS_ARRAY_PACKED_VALUE;
+    if (current == TURBOJS_ARRAY_PACKED_NUMBER || incoming == TURBOJS_ARRAY_PACKED_NUMBER)
+        return TURBOJS_ARRAY_PACKED_NUMBER;
+    return TURBOJS_ARRAY_PACKED_INT32;
+}
+
 struct JSObject {
     /* ref_count/gc_obj_type/mark live in the allocator block header; the object
        body keeps only the GC list link plus the object's own flags. */
@@ -1242,6 +1303,7 @@ struct JSObject {
     uint8_t tmp_mark : 1; /* used in JS_WriteObjectRec() */
     uint8_t is_HTMLDDA : 1; /* specific annex B IsHtmlDDA behavior */
     uint16_t class_id; /* see JS_CLASS_x */
+    uint8_t array_element_kind; /* TurboJSArrayElementKind for ordinary arrays */
     /* byte offsets: 16/24 */
     JSShape *shape; /* prototype and property names + flag */
     JSProperty *prop; /* array of properties */

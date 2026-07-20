@@ -1209,13 +1209,25 @@ typedef enum TurboJSSSAOpcode {
     TURBOJS_SSA_ADD_I64,
     TURBOJS_SSA_SUB_I64,
     TURBOJS_SSA_MUL_I64,
+    TURBOJS_SSA_AND_I64,
+    TURBOJS_SSA_OR_I64,
+    TURBOJS_SSA_XOR_I64,
+    TURBOJS_SSA_SHL_I64,
+    TURBOJS_SSA_SAR_I64,
+    TURBOJS_SSA_SHR_I64,
     TURBOJS_SSA_MIN_F64,
     TURBOJS_SSA_MAX_F64,
     TURBOJS_SSA_LESS_THAN_I64,
+    TURBOJS_SSA_LESS_EQUAL_I64,
+    TURBOJS_SSA_GREATER_THAN_I64,
+    TURBOJS_SSA_GREATER_EQUAL_I64,
+    TURBOJS_SSA_EQUAL_I64,
     TURBOJS_SSA_PHI,
     TURBOJS_SSA_GUARD_INT32,
     TURBOJS_SSA_PROPERTY_LOAD,
     TURBOJS_SSA_PROPERTY_STORE,
+    TURBOJS_SSA_VIRTUAL_OBJECT,
+    TURBOJS_SSA_VIRTUAL_FIELD_STORE,
     TURBOJS_SSA_ELEMENT_LOAD,
     TURBOJS_SSA_ELEMENT_STORE,
     TURBOJS_SSA_JUMP,
@@ -1252,6 +1264,7 @@ typedef struct TurboJSSSAValue {
     uint16_t property_feedback_generation;
     uint8_t property_case_count;
     uint8_t property_reserved[3];
+    uint32_t property_state_receiver;
     uintptr_t property_shapes[TURBOJS_PROPERTY_PIC_MAX_CASES];
     uint32_t property_indices[TURBOJS_PROPERTY_PIC_MAX_CASES];
     uint16_t property_generations[TURBOJS_PROPERTY_PIC_MAX_CASES];
@@ -1481,6 +1494,11 @@ typedef struct TurboJSSSAOptimizationStats {
     uint32_t expressions_eliminated;
     uint32_t guards_eliminated;
     uint32_t property_loads_eliminated;
+    uint32_t property_store_forwardings;
+    uint32_t property_store_phis;
+    uint32_t property_dead_stores_eliminated;
+    uint32_t virtual_objects_scalarized;
+    uint32_t virtual_field_loads_forwarded;
     uint32_t property_dependency_reuses;
     uint32_t property_cross_block_loads_eliminated;
     uint32_t property_unique_path_reuses;

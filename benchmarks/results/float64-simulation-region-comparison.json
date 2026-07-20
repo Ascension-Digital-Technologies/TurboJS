@@ -1,0 +1,45 @@
+{
+  "baseline": {
+    "geometric_mean_ratio": 13.307441878475458,
+    "median_ratio": 15.13536447918726,
+    "turbojs_total_ms": 487.46332499943674,
+    "node_total_ms": 41.36593300000001,
+    "total_ratio": 11.784173343785975
+  },
+  "candidate": {
+    "geometric_mean_ratio": 9.756135488712056,
+    "median_ratio": 10.01250207304507,
+    "turbojs_total_ms": 479.38096300140023,
+    "node_total_ms": 44.948336999999874,
+    "total_ratio": 10.665154597408167
+  },
+  "numeric_simulation": {
+    "baseline": {
+      "workload": "numeric_simulation",
+      "turbojs_median_ms": 24.684028999879956,
+      "node_median_ms": 0.5393760000000043,
+      "ratio": 45.76404771417297,
+      "run_ratios": [
+        47.66552803802287,
+        45.522225683357995,
+        43.118392023141695
+      ]
+    },
+    "candidate": {
+      "workload": "numeric_simulation",
+      "turbojs_median_ms": 3.009252999909222,
+      "node_median_ms": 0.5489159999999984,
+      "ratio": 5.482173957234314,
+      "run_ratios": [
+        5.236539916123446,
+        5.482173957234314,
+        5.668354500987616
+      ]
+    }
+  },
+  "validation": {
+    "build_targets": "293/293",
+    "native_tests": "97/97",
+    "checksums": "exact"
+  }
+}

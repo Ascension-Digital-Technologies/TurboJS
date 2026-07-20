@@ -1,0 +1,21 @@
+{
+  "methodology": "alternating same-host A/B; identical parity suite and seeds; TurboJS execution totals compared directly to remove Node/V8 variance",
+  "baseline_total_ms_runs": [
+    457.41556200012565,
+    437.4093840010464,
+    448.5432830005884
+  ],
+  "packed_array_total_ms_runs": [
+    442.14046999812126,
+    435.23387199733406,
+    442.32033100165427
+  ],
+  "baseline_median_total_ms": 448.5432830005884,
+  "packed_array_median_total_ms": 442.14046999812126,
+  "improvement_percent": 1.4274682611753113,
+  "validation": {
+    "build_targets": 293,
+    "native_tests": "97/97",
+    "checksum_parity": "exact"
+  }
+}

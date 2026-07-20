@@ -1,0 +1,24 @@
+{
+  "optimization": "virtual object scalar replacement for non-escaping numeric object literals in guarded callback plans",
+  "methodology": "same host, same whole-engine parity harness, 3 repetitions per engine build; TurboJS totals compared directly",
+  "baseline": {
+    "geometric_mean_ratio": 16.02367822963295,
+    "median_ratio": 19.786337635808813,
+    "turbojs_total_ms": 620.9549219999462,
+    "node_total_ms": 39.06321400000001,
+    "total_ratio": 15.8961554469109
+  },
+  "candidate": {
+    "geometric_mean_ratio": 11.83731625637176,
+    "median_ratio": 10.914287181238036,
+    "turbojs_total_ms": 610.5136219989508,
+    "node_total_ms": 44.33291300000015,
+    "total_ratio": 13.771114521595926
+  },
+  "turbojs_total_improvement_percent": 1.6814908185873598,
+  "focused_temporary_object_callback": {
+    "baseline_median_ms": 1251.3273269996716,
+    "candidate_median_ms": 656.5794439993624,
+    "improvement_percent": 47.52936103667984
+  }
+}

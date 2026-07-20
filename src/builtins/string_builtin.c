@@ -554,8 +554,8 @@ static JSValue js_string_at(JSContext *ctx, JSValueConst this_val,
     return ret;
 }
 
-static JSValue js_string_charCodeAt(JSContext *ctx, JSValueConst this_val,
-                                     int argc, JSValueConst *argv)
+JSValue js_string_charCodeAt(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
 {
     JSValue val, ret;
     JSString *p;

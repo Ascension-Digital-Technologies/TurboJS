@@ -1,0 +1,137 @@
+{
+  "methodology": {
+    "classification": "general whole-engine parity",
+    "suite": "tests/benchmarks/parity/whole_engine_parity.js",
+    "independent_process_runs": 3,
+    "warmups_per_workload": 2,
+    "timed_samples_per_workload": 7,
+    "input_policy": "identical externally supplied runtime seed; seed changes for every timed sample",
+    "validation": "exact checksum equality for every workload and process run",
+    "aggregation": "median across process runs, then unweighted geometric mean of workload ratios",
+    "exclusions": "no fixed-input leaf-call, pure recursion, or isolated analytical-kernel microbenchmarks"
+  },
+  "environment": {
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "turbojs_version": "0.16.0-rc.6",
+    "node_version": "v22.16.0"
+  },
+  "workloads": [
+    {
+      "workload": "numeric_simulation",
+      "turbojs_median_ms": 28.443446999997832,
+      "node_median_ms": 0.5859610000000046,
+      "ratio": 48.54153604079044,
+      "run_ratios": [
+        48.265518644577476,
+        50.02400122406394,
+        48.24729973494956
+      ]
+    },
+    {
+      "workload": "order_processing",
+      "turbojs_median_ms": 40.8782019999926,
+      "node_median_ms": 11.554469000000012,
+      "ratio": 3.5378693733128332,
+      "run_ratios": [
+        3.666346863686411,
+        3.4092306970715707,
+        3.520854052228895
+      ]
+    },
+    {
+      "workload": "ast_pipeline",
+      "turbojs_median_ms": 11.558202000014717,
+      "node_median_ms": 1.130359999999996,
+      "ratio": 10.225239746642448,
+      "run_ratios": [
+        10.288402844857535,
+        11.315374072420676,
+        9.901989631623128
+      ]
+    },
+    {
+      "workload": "event_routing",
+      "turbojs_median_ms": 84.62487699999474,
+      "node_median_ms": 5.729608999999982,
+      "ratio": 14.769747289910185,
+      "run_ratios": [
+        13.620388556248704,
+        16.242122290161472,
+        14.672591969191418
+      ]
+    },
+    {
+      "workload": "graph_analytics",
+      "turbojs_median_ms": 21.800301000010222,
+      "node_median_ms": 0.8228159999999889,
+      "ratio": 26.49474609148402,
+      "run_ratios": [
+        26.800989781025894,
+        21.654815463772053,
+        26.49474609148402
+      ]
+    },
+    {
+      "workload": "text_indexing",
+      "turbojs_median_ms": 19.218743999983417,
+      "node_median_ms": 5.104248999999982,
+      "ratio": 3.765244211241161,
+      "run_ratios": [
+        3.7453948661199354,
+        3.9431282499046754,
+        2.8889268420697354
+      ]
+    },
+    {
+      "workload": "collection_transforms",
+      "turbojs_median_ms": 46.97449999998207,
+      "node_median_ms": 4.570674999999994,
+      "ratio": 10.27736603455335,
+      "run_ratios": [
+        10.921354942105388,
+        8.167731164366755,
+        11.017755956507829
+      ]
+    },
+    {
+      "workload": "state_machine",
+      "turbojs_median_ms": 113.96852800001216,
+      "node_median_ms": 1.6877240000000029,
+      "ratio": 67.52794177247699,
+      "run_ratios": [
+        66.83156024418571,
+        67.93034820858551,
+        67.42806321556955
+      ]
+    },
+    {
+      "workload": "config_templates",
+      "turbojs_median_ms": 151.08881899999687,
+      "node_median_ms": 5.949494000000016,
+      "ratio": 25.395238485826944,
+      "run_ratios": [
+        27.067928508865414,
+        27.62096339621653,
+        23.578741186348175
+      ]
+    },
+    {
+      "workload": "allocation_lifecycle",
+      "turbojs_median_ms": 140.71829800000705,
+      "node_median_ms": 5.106628000000001,
+      "ratio": 27.556011129067368,
+      "run_ratios": [
+        27.556011129067368,
+        32.674629551244664,
+        27.271366887378104
+      ]
+    }
+  ],
+  "aggregate": {
+    "geometric_mean_ratio": 16.215071829366163,
+    "median_ratio": 20.082492887868565,
+    "turbojs_total_ms": 659.2739179999917,
+    "node_total_ms": 42.24198499999998,
+    "total_ratio": 15.607077129542848
+  }
+}

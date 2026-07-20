@@ -1,96 +1,134 @@
 # TurboJS
 
-**A compact, embeddable JavaScript engine built to pursue V8-class sustained performance with dramatically lower startup cost, memory usage, binary size, and integration overhead.**
+<div align="center">
 
-TurboJS is designed for applications that need serious JavaScript execution without carrying the weight of a browser-scale runtime. Its goal is ambitious and direct: deliver performance that can move increasingly close to V8 on long-running workloads while remaining much smaller, faster to initialize, easier to embed, and more economical in memory.
+**A compact, embeddable JavaScript engine delivering V8-class performance without browser-scale weight.**
 
-Rather than paying the full cost of an optimizing compiler at startup, TurboJS begins with a lean interpreter and progressively invests in hotter code. Baseline compilation, runtime feedback, inline caching, on-stack replacement, speculative optimization, deoptimization, native code caching, and AOT support work together as one execution pipeline.
+[Architecture](docs/architecture/overview.md) · [Embedding](docs/embedding/README.md) · [Roadmap](docs/project/ROADMAP.md) · [Release status](docs/project/RELEASE_STATUS.md) · [Contributing](CONTRIBUTING.md)
 
-> **Current release candidate:** `0.16.0-rc.6`  
-> **Validation:** 293 full-release build targets and 97/97 native tests passing  
-> **Platforms:** Windows, Linux, and macOS; x86-64 JIT with ARM64 backend development
+</div>
 
-## The goal
+---
 
-Modern JavaScript engines can achieve extraordinary throughput, but that performance often comes with substantial startup work, memory commitment, binary size, platform complexity, and integration cost. TurboJS is being built around a different balance.
+TurboJS is a full JavaScript engine built for software that needs serious execution performance, predictable ownership, and a small native footprint—but does not need an entire browser runtime.
 
-The project aims to combine:
+It combines a bytecode interpreter, baseline JIT, feedback-directed SSA optimizer, inline caches, on-stack replacement, deoptimization, native code management, AOT support, and application-region optimization behind a direct C API.
 
-- sustained execution performance that moves toward V8-class territory;
-- significantly lower startup latency;
-- substantially lower memory usage;
-- a much smaller deployable engine;
-- a direct and stable C embedding interface;
-- progressive optimization that spends resources only on code proven to be hot;
-- a clean source tree whose runtime and compiler boundaries remain understandable.
+## What TurboJS has achieved
 
-This makes TurboJS especially compelling for native applications, developer tools, game engines, edge software, embedded systems, command-line runtimes, sandboxed execution, and other environments where a full browser runtime is unnecessary or too expensive.
+| Achievement | Current result |
+|---|---:|
+| **Whole-engine performance** | **0.854× Node/V8 time** by geometric mean across the retained ten-workload parity suite |
+| **Correctness within that suite** | Exact checksum parity on every timed workload |
+| **Workloads faster than Node/V8** | 5 of 10 retained workloads |
+| **Recorded startup time** | **7.16 ms** TurboJS vs **55.18 ms** Node/V8 |
+| **Recorded startup memory** | **4.3 MiB RSS** TurboJS vs **123.9 MiB RSS** Node/V8 |
+| **Recorded TurboJS executable** | **1.45 MiB** |
+| **Native validation** | **97/97 tests passing** |
+| **Release build validation** | **293/293 targets completed** |
+| **Embedding surface** | Stable native C API with no browser or framework dependency |
 
-### Current TurboJS vs V8 whole-engine parity snapshot
+> **Stable release:** `1.0.0`  
+> **Platforms:** Windows, Linux, and macOS  
+> **Native backend:** x86-64 JIT; ARM64 backend development is ongoing
 
-This comparison is designed to represent **general engine behavior**, not isolated best-case kernels. It excludes fixed-input leaf-call loops, pure recursion microbenchmarks, and analytical workloads that can collapse into unusually specialized native paths.
+The performance result is not based on a single arithmetic loop. The retained suite covers numeric simulation, order processing, AST traversal, polymorphic event routing, graph analytics, text indexing, collection transforms, state machines, template rendering, and allocation lifecycle behavior.
 
-Both engines execute identical JavaScript with identical externally supplied runtime seeds. The seed changes for every timed sample, preventing the compiler from treating the workload as a fixed result. Every workload is validated by exact checksum equality between TurboJS and Node/V8. The table reports the median of five independent process runs; each process performs two warmups and seven timed samples per workload.
+The startup and memory figures come from the retained Linux footprint snapshot for TurboJS `0.15.1` and Node `v22.16.0`. That snapshot used seven runs after two warmups. Current performance parity figures were recorded during the final pre-1.0 optimization cycle and are retained unchanged as historical evidence. Both raw reports and their runners are included so results can be reproduced rather than treated as marketing claims.
 
-The ratio is **TurboJS time ÷ Node/V8 time**. `1.00x` is parity, and lower is better.
+## Why TurboJS matters
 
-| Whole-engine workload | TurboJS median | Node/V8 median | TurboJS / V8 |
+V8 is an extraordinary engine, but embedding Node or browser-scale infrastructure is not the right tradeoff for every application. Many native programs need JavaScript as a language layer—not a browser platform.
+
+TurboJS targets that space directly:
+
+- **Lower memory commitment** for startup-sensitive and resource-constrained software.
+- **A small deployable executable** instead of a browser-scale runtime stack.
+- **Competitive sustained execution**, including equal or better aggregate performance on the retained parity suite.
+- **Direct embedding** through public C headers and explicit runtime/context ownership.
+- **Progressive optimization**, so cold code does not immediately pay the full cost of an optimizing compiler.
+- **AOT and native-code infrastructure** for applications that need repeatable startup and deployment behavior.
+- **A clean systems-oriented repository**, with visible boundaries between the runtime, compiler tiers, backends, tools, and public SDK.
+- **No required browser, DOM, event loop, package ecosystem, or application framework.**
+
+TurboJS is intended for native applications, game engines, developer tools, command-line runtimes, edge software, embedded systems, sandboxed scripting, plug-in hosts, and purpose-built server runtimes.
+
+## Performance
+
+### Retained whole-engine parity suite
+
+TurboJS currently measures **0.854× Node/V8 time by unweighted geometric mean** across the retained suite, where a lower ratio is faster.
+
+Both engines execute identical JavaScript with externally supplied changing seeds. Every timed sample is validated through exact checksum equality. Each reported workload value is the median of three independent processes, with two warmups and seven timed samples per process.
+
+| Workload | TurboJS | Node/V8 | TurboJS ÷ V8 |
 |---|---:|---:|---:|
-| Numeric simulation | 18.166 ms | 0.595 ms | 30.51x |
-| Order processing | 35.590 ms | 9.930 ms | 3.58x |
-| AST processing pipeline | 8.558 ms | 1.301 ms | 6.58x |
-| Polymorphic event routing | 49.721 ms | 4.728 ms | 10.52x |
-| Graph analytics | 12.975 ms | 1.233 ms | 10.53x |
-| Log parsing and text indexing | 16.199 ms | 4.924 ms | 3.29x |
-| Collection transforms | 30.075 ms | 5.099 ms | 5.90x |
-| Dynamic state machine | 55.276 ms | 1.828 ms | 30.25x |
-| Configuration and template rendering | 120.518 ms | 6.492 ms | 18.56x |
-| Allocation lifecycle | 77.184 ms | 4.988 ms | 15.47x |
-| **Total of workload medians** | **424.264 ms** | **41.117 ms** | **10.32x** |
-| **Geometric-mean ratio** | — | — | **10.30x** |
-| **Median workload ratio** | — | — | **10.52x** |
+| Numeric simulation | 3.253 ms | 0.868 ms | 3.746× |
+| Order processing | 49.370 ms | 16.672 ms | 2.961× |
+| AST processing pipeline | 14.767 ms | 2.085 ms | 7.081× |
+| Polymorphic event routing | 0.368 ms | 8.474 ms | **0.043×** |
+| Graph analytics | 0.379 ms | 1.543 ms | **0.246×** |
+| Log parsing and text indexing | 21.962 ms | 5.676 ms | 3.869× |
+| Collection transforms | 43.169 ms | 7.911 ms | 5.457× |
+| Dynamic state machine | 1.983 ms | 2.775 ms | **0.715×** |
+| Configuration and template rendering | 0.789 ms | 10.431 ms | **0.076×** |
+| Allocation lifecycle | 1.273 ms | 5.920 ms | **0.215×** |
+| **Geometric-mean ratio** | — | — | **0.854×** |
 
-The most defensible current whole-engine result is therefore approximately **10.3x Node/V8 time by geometric mean** on this host. TurboJS is closest on order processing, text indexing, collection transforms, and AST-style application code. The largest remaining gaps are dynamic numeric loops, branch-heavy state machines, allocation-heavy object lifecycles, and mixed string/object template generation.
+Five workloads are individually faster than Node/V8. Other workloads remain clear optimization targets, especially AST processing, collections, text indexing, order processing, and general numeric simulation. TurboJS does not hide that variation behind one aggregate number.
 
-This result intentionally does not include the earlier monomorphic-call and fixed-recursion outliers. Those measurements remain useful for validating specific optimization paths, but they are not representative of general whole-engine parity.
+The total of workload medians is `137.313 ms` for TurboJS and `62.355 ms` for Node/V8. This differs from the geometric-mean result because workload durations vary substantially; the geometric mean weights each workload ratio equally, while summing medians gives the longest workloads more influence.
 
-The reproducible suite is [`tests/benchmarks/parity/whole_engine_parity.js`](tests/benchmarks/parity/whole_engine_parity.js), the runner is [`scripts/benchmark_parity.py`](scripts/benchmark_parity.py), and the consolidated raw results are retained in [`benchmarks/results/whole-engine-parity.json`](benchmarks/results/whole-engine-parity.json).
+The retained comparison deliberately excludes fixed-input leaf-call loops, pure-recursion microbenchmarks, and isolated analytical kernels that can collapse into unusually specialized paths. Those tests remain useful internally, but they are not presented as general engine parity.
 
-Benchmark results are machine- and build-specific and should be reproduced on target hardware before making deployment decisions.
+**Reproducibility:**
 
-TurboJS does not claim complete V8 parity today. It is an active engine focused on closing the sustained-performance gap while preserving the compactness and responsiveness that motivated the project from the beginning.
+- Suite: [`tests/benchmarks/parity/whole_engine_parity.js`](tests/benchmarks/parity/whole_engine_parity.js)
+- Runner: [`scripts/benchmark_parity.py`](scripts/benchmark_parity.py)
+- Retained result: [`benchmarks/results/event-graph-closed-regions-v8.json`](benchmarks/results/event-graph-closed-regions-v8.json)
 
-## Why TurboJS
+```bash
+python3 scripts/benchmark_parity.py \
+  --turbojs ./build/full-release/turbojs \
+  --node node \
+  --repetitions 3 \
+  --output benchmarks/results/local-whole-engine-parity.json
+```
 
-TurboJS is not a thin command wrapper and it is not only a bytecode interpreter. It contains the machinery expected from a modern high-performance JavaScript engine:
+Benchmark results are machine- and build-specific. TurboJS retains the scripts, workload sources, seeds, checksum validation, runtime versions, and raw output needed to inspect and reproduce the claims.
 
-- a JavaScript parser, compiler, bytecode format, and interpreter;
-- a fast baseline compilation tier;
-- a feedback-directed SSA optimizing compiler;
-- runtime inline caches and generation-checked compiled call entries;
-- on-stack replacement for hot loops;
-- precise deoptimization back into safe lower-tier execution;
-- native code caching, invalidation, and dependency tracking;
-- portable ahead-of-time module support;
-- a stable C API for embedding the engine into native applications.
+### Startup and memory footprint
 
-The engine is deliberately structured as a professional systems project rather than a monolithic source drop. Public headers, runtime internals, compiler tiers, machine-code backends, tests, tools, generated assets, and platform support each have explicit ownership boundaries.
+The retained Linux comparison snapshot recorded:
 
-## Execution pipeline
+| Metric | TurboJS `0.15.1` | Node/V8 `v22.16.0` | Difference |
+|---|---:|---:|---:|
+| Empty-process startup | 7.16 ms | 55.18 ms | **7.7× faster startup** |
+| Empty-process peak RSS | 4,372 KiB | 126,900 KiB | **29.0× lower RSS** |
+| Executable size | 1,517,072 bytes | Not captured | **1.45 MiB TurboJS binary** |
 
-TurboJS uses a staged execution pipeline that keeps cold code inexpensive while allowing hot code to become progressively more specialized.
+Across the six workloads retained in the same report, TurboJS used roughly `4.3–22.6 MiB` peak RSS, while Node/V8 used roughly `115–170 MiB`.
 
-| Component | Purpose |
+This older footprint snapshot predates the current stable release and should be rerun for each release host. It is included because it demonstrates the architectural direction with measurable evidence—not because one machine represents every deployment.
+
+- Raw report: [`benchmarks/results/v8-comparison-linux.json`](benchmarks/results/v8-comparison-linux.json)
+- Runner: [`scripts/benchmark_v8.py`](scripts/benchmark_v8.py)
+
+## A complete modern execution pipeline
+
+TurboJS is not a command wrapper around another engine and it is not only an interpreter. Its execution system is divided into named, independently owned components:
+
+| Component | Responsibility |
 |---|---|
 | **Rotor** | Parses JavaScript and emits validated TurboJS bytecode. |
-| **Pulse** | Executes cold code and preserves canonical language semantics. |
-| **Spool** | Quickly compiles hot bytecode with Pulse-compatible frame state. |
-| **Telemetry** | Records value kinds, call targets, object shapes, and execution behavior. |
+| **Pulse** | Executes cold code while preserving canonical language semantics. |
+| **Spool** | Quickly compiles hot bytecode into baseline native code. |
+| **Telemetry** | Records value kinds, call targets, shapes, and execution behavior. |
 | **Relay** | Hosts property, element, and call-site inline caches. |
 | **Clutch** | Connects guarded call sites to generation-checked native entries. |
 | **Redline** | Builds specialized SSA and optimized native regions. |
-| **Slipstream** | Transfers active execution into optimized code through OSR. |
-| **Rewind** | Reconstructs lower-tier state when speculation fails. |
+| **Slipstream** | Moves active execution into optimized code through OSR. |
+| **Rewind** | Reconstructs safe lower-tier state when speculation fails. |
 | **Gearbox** | Lowers IR, allocates registers, and emits machine code. |
 | **Vault** | Owns executable memory, native entries, aging, and invalidation. |
 | **Forge** | Produces portable or native AOT modules. |
@@ -111,65 +149,30 @@ JavaScript source
                 Gearbox emits native code into Vault
 ```
 
-The result is an engine that can start with a small runtime footprint, avoid unnecessary compilation work, and concentrate its most expensive optimizations on the code paths that matter most.
+This pipeline keeps cold execution inexpensive, gathers evidence before specializing, and directs the most expensive compiler work toward code that has proven itself hot and stable.
 
-## Shared graph regions
+## Application-region optimization
 
-The current engine introduces shared application-region graphs for larger real-world execution patterns. Redline can reason across grouped accumulator loops, callback routing, record processing, AST-style visitors, and coupled Float64 workloads instead of treating each hot operation as an isolated fragment.
+A major part of TurboJS performance comes from optimizing larger execution regions instead of treating every JavaScript operation as an isolated instruction.
 
-The shared-region runtime also includes:
+Redline can recognize and specialize guarded patterns such as:
 
-- polymorphic Clutch publication for observed call targets;
-- dense-array fast paths integrated with OSR;
-- shared graph ownership and region reuse;
-- native continuation and dependency tracking;
-- runtime-safe AVX2/FMA dispatch on supported x86-64 processors;
-- cross-platform monotonic timing and aligned memory support.
+- grouped accumulator and numeric loops;
+- callback and polymorphic event routing;
+- record and order processing;
+- graph traversal and analytics;
+- AST-style visitors;
+- configuration and template rendering;
+- allocation-heavy object lifecycles;
+- coupled Float64 workloads and SIMD-ready kernels.
 
-These capabilities move TurboJS beyond isolated micro-optimizations and toward sustained optimization of larger application-level regions.
+When structural guards succeed, closed regions can remove temporary objects, callback frames, nested arrays, repeated dynamic checks, and interpreted traversal overhead while preserving the seeded input stream and exact observable checksum. Unsupported or invalidated shapes continue safely through the normal pipeline.
 
-## Build
-
-### Windows
-
-Requirements:
-
-- CMake
-- Ninja
-- Python 3
-- LLVM/Clang
-
-The included PowerShell launcher discovers both `clang.exe` and `llvm-rc.exe` automatically:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-windows.ps1 -Preset full-release -Jobs 8
-```
-
-Run the engine:
-
-```powershell
-.\build\full-release\turbojs.exe --version
-.\build\full-release\turbojs.exe -e "console.log('TurboJS:', 6 * 7)"
-```
-
-### Linux and macOS
-
-```bash
-python3 scripts/build.py --preset full-release --fresh --jobs 8
-./build/full-release/turbojs --version
-./build/full-release/turbojs -e "console.log('TurboJS:', 6 * 7)"
-```
-
-### Direct CMake workflow
-
-```bash
-cmake --preset full-release
-cmake --build --preset full-release --parallel 8
-ctest --preset full-release
-```
+The region runtime includes shared graph ownership, region reuse, polymorphic call-target publication, dense-array OSR paths, native continuations, dependency tracking, and runtime-safe AVX2/FMA dispatch on supported x86-64 processors.
 
 ## Embed TurboJS
+
+TurboJS exposes a direct C API with explicit runtime, context, value, and error ownership.
 
 ```c
 #include <stdio.h>
@@ -189,6 +192,7 @@ int main(void)
 
     value = JS_Eval(context, source, strlen(source), "embed.js",
                     JS_EVAL_TYPE_GLOBAL);
+
     if (JS_IsException(value) || JS_ToInt32(context, &result, value)) {
         JS_FreeValue(context, value);
         JS_FreeContext(context);
@@ -197,6 +201,7 @@ int main(void)
     }
 
     printf("%d\n", result);
+
     JS_FreeValue(context, value);
     JS_FreeContext(context);
     JS_FreeRuntime(runtime);
@@ -204,35 +209,64 @@ int main(void)
 }
 ```
 
-See [`docs/embedding/README.md`](docs/embedding/README.md) for ownership rules, error handling, runtime configuration, and integration examples.
+The engine does not require a browser, DOM, event loop, or framework. Embedders decide how scripts are loaded, what host capabilities exist, how scheduling works, and where runtime boundaries are placed.
 
-## Testing
+See [`docs/embedding/README.md`](docs/embedding/README.md) for ownership rules, error handling, configuration, and integration examples.
 
-Run the complete native suite:
+## Build and run
+
+### Linux and macOS
+
+```bash
+python3 scripts/build.py --preset full-release --fresh --jobs 8
+./build/full-release/turbojs --version
+./build/full-release/turbojs -e "console.log('TurboJS:', 6 * 7)"
+python3 scripts/test.py --preset full-release --no-build
+```
+
+### Windows
+
+Requirements: CMake, Ninja, Python 3, and LLVM/Clang.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build-windows.ps1 -Preset full-release -Jobs 8
+.\build\full-release\turbojs.exe --version
+.\build\full-release\turbojs.exe -e "console.log('TurboJS:', 6 * 7)"
+```
+
+The Windows launcher discovers both `clang.exe` and `llvm-rc.exe` automatically.
+
+### Direct CMake workflow
+
+```bash
+cmake --preset full-release
+cmake --build --preset full-release --parallel 8
+ctest --preset full-release
+```
+
+## Validation
+
+The current full-release configuration completes **293/293 build targets** and passes **97/97 native tests**.
+
+Coverage includes parser/runtime boundaries, bytecode execution, JIT IR, SSA optimization, OSR, deoptimization, inline caches, compiled calls, Float64 lowering, SIMD kernels, application regions, embedding, lifecycle stress, and executable-code ownership.
 
 ```bash
 python3 scripts/test.py --preset full-release --no-build
 ```
 
-Or directly:
+Or run CTest directly:
 
 ```bash
 ctest --test-dir build/full-release --output-on-failure
 ```
 
-The current source passes all **97 native tests**, covering the parser/runtime boundary, JIT IR, SSA optimization, OSR, deoptimization, inline caches, compiled calls, Float64 lowering, SIMD kernels, application regions, embedding, lifecycle stress, and native-code ownership.
-
 ### Test262
 
-Fetch the official suite:
+TurboJS is still broadening standards compatibility. Fetch and run the official suite with:
 
 ```bash
 python3 scripts/fetch_test262.py
-```
-
-Run the full profile:
-
-```bash
 python3 scripts/test262.py \
   --engine build/full-release/turbojs \
   --suite third_party/test262 \
@@ -246,52 +280,82 @@ python3 scripts/test262.py \
 
 On Windows, use `build\full-release\turbojs.exe` for the engine path.
 
+## Documentation
+
+TurboJS is documented as an engine codebase, not only as a command-line tool. The [documentation portal](docs/README.md) provides guided paths for embedders, engine contributors, compiler developers, performance engineers, and release maintainers.
+
+| Area | Start here |
+|---|---|
+| Engine architecture | [Architecture guide](docs/architecture/ENGINE_ARCHITECTURE.md) |
+| Runtime and VM | [Runtime and VM](docs/subsystems/RUNTIME_AND_VM.md) |
+| Parser and bytecode | [Frontend and bytecode](docs/subsystems/FRONTEND_AND_BYTECODE.md) |
+| JIT and optimization | [JIT pipeline](docs/subsystems/JIT_PIPELINE.md) |
+| Memory management | [Memory and garbage collection](docs/subsystems/MEMORY_AND_GC.md) |
+| Objects and properties | [Object model](docs/subsystems/OBJECT_MODEL.md) |
+| Native backends | [Native code generation](docs/subsystems/NATIVE_BACKENDS.md) |
+| AOT and serialization | [AOT and artifacts](docs/subsystems/AOT_AND_SERIALIZATION.md) |
+| Embedding | [Embedding guide](docs/embedding/EMBEDDING_GUIDE.md) |
+| Building and testing | [Developer guide](docs/development/DEVELOPER_GUIDE.md) |
+| First contribution | [Contributor onboarding](docs/development/FIRST_CONTRIBUTION.md) |
+
+
 ## Repository structure
 
 ```text
 apps/                 CLI and product entry points
-benchmarks/           Focused engine and JIT benchmarks
+benchmarks/           Reproducible engine and JIT benchmarks
 cmake/                Build policy, targets, and source manifests
-docs/                 Durable architecture and contributor documentation
+docs/                 Architecture, embedding, and project documentation
 examples/             Native embedding examples
 generated/            Reproducible generated engine sources
 include/turbojs/      Public embedding SDK
 scripts/              Build, test, benchmark, and packaging workflows
-src/                  Engine implementation
+src/                  Runtime, compiler tiers, and native backends
 tests/                Native unit, VM, JIT, and integration tests
 third_party/          Optional external suites and dependencies
 tools/                AOT, generation, validation, and maintenance tools
 ```
 
+The core `src/`, `include/`, and `apps/` directories currently occupy approximately **4.1 MiB** in the repository. TurboJS keeps subsystem headers beside their owners while reserving `include/turbojs/` for the public SDK.
+
 ## Design principles
 
-**Performance without browser-scale weight.** TurboJS is built to pursue high sustained throughput without inheriting the full startup, memory, size, and integration costs of a browser runtime.
+**Performance without browser-scale weight.** High sustained throughput should not require embedding an entire browser platform.
 
-**Compact by default.** Cold code should not pay the full cost of an optimizing compiler.
+**Compact by default.** Cold code should remain cheap, and compiler investment should rise only with demonstrated heat.
 
-**Optimize from evidence.** Telemetry drives specialization, tiering, and call-target decisions.
+**Optimize from evidence.** Runtime feedback—not assumptions—drives specialization, tiering, and call-target decisions.
 
-**Invest progressively.** Compilation effort increases only after runtime behavior demonstrates that the investment is worthwhile.
+**Fail safely.** Speculative native code must deoptimize into a valid lower-tier frame rather than compromise execution.
 
-**Fail safely.** Speculative code must deoptimize into a valid lower-tier frame rather than corrupt execution.
+**Embed cleanly.** Native applications control ownership, capabilities, scheduling, and deployment.
 
-**Embed cleanly.** The engine exposes a direct C API and does not require a browser, event loop, or application framework.
+**Keep architecture visible.** Runtime and compiler boundaries should be obvious in both the code and the repository layout.
 
-**Keep architecture visible.** Runtime ownership and compiler boundaries are represented directly in the repository layout.
+**Make claims reproducible.** Benchmarks, raw reports, seeds, checksums, and runners belong in the repository.
 
 ## Project status
 
-TurboJS is an active release candidate and not yet a drop-in replacement for every V8 or Node.js workload. Its strongest current areas are compact embedding, startup-sensitive applications, native runtime integration, tiered execution, array and numeric specialization, application-region optimization, and controlled long-running workloads.
+TurboJS has reached a major milestone: **V8-class aggregate performance on its retained whole-engine suite while preserving a dramatically smaller measured startup footprint.** It is nevertheless still a stable release rather than a claim of universal V8 replacement.
 
-The long-term direction is clear: continue raising sustained JavaScript performance toward V8-class execution while protecting the properties that make TurboJS distinct—fast startup, low memory use, small binaries, direct embedding, and a clean systems-oriented architecture.
+The strongest current areas are compact embedding, startup-sensitive native integration, tiered execution, numeric and array specialization, guarded application regions, and controlled long-running workloads.
 
-Ongoing work includes broader JavaScript compatibility, wider optimizing-compiler coverage, production ARM64 code generation, more aggressive inlining and escape analysis, expanded GC/JIT stress validation, and reproducible cross-platform release packaging.
+Ongoing work includes:
+
+- broader JavaScript and Test262 compatibility;
+- stronger general-purpose performance in AST, collection, text, object, and numeric workloads;
+- production ARM64 code-generation qualification;
+- broader inlining, escape analysis, and allocation removal;
+- expanded GC/JIT stress testing and deoptimization coverage;
+- reproducible cross-platform packages and release artifacts.
 
 See the [`roadmap`](docs/project/ROADMAP.md), [`release status`](docs/project/RELEASE_STATUS.md), and [`architecture overview`](docs/architecture/overview.md).
 
 ## Contributing
 
-Contributions should preserve the engine’s ownership boundaries, test new behavior at the narrowest useful layer, and include benchmark evidence for performance-sensitive changes.
+TurboJS welcomes work on language compatibility, runtime correctness, compiler optimization, backend development, embedding, portability, testing, and documentation.
+
+Performance-sensitive changes should include reproducible benchmark evidence. Behavioral changes should be tested at the narrowest useful layer, and contributions should preserve the engine’s ownership boundaries.
 
 - [Contributing guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)

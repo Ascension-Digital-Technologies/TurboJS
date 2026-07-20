@@ -82,6 +82,7 @@ static JSValue JS_NewObjectFromShape(JSContext *ctx, JSShape *sh, JSClassID clas
             p->u.array.u.values = NULL;
             p->u.array.count = 0;
             p->u.array.u1.size = 0;
+            p->array_element_kind = TURBOJS_ARRAY_EMPTY;
             if (!props) {
                 /* XXX: remove */
                 /* the length property is always the first one */
@@ -331,6 +332,9 @@ JSValue JS_NewArrayFrom(JSContext *ctx, int count, const JSValue *values)
         p->u.array.count = count;
         p->prop[0].u.value = js_int32(count);
         memcpy(p->u.array.u.values, values, count * sizeof(*values));
+        p->array_element_kind = TURBOJS_ARRAY_EMPTY;
+        for (i = 0; i < count; i++)
+            p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, values[i]);
     }
     return obj;
 exception:

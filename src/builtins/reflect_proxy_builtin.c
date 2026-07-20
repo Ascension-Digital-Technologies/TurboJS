@@ -290,10 +290,43 @@ static int json_object_stack_push(JSContext *ctx, JSONStringifyContext *jsc, JSO
     return 0;
 }
 
-static JSValue JS_ToQuotedStringFree(JSContext *ctx, JSValue val) {
-    JSValue r = JS_ToQuotedString(ctx, val);
-    JS_FreeValue(ctx, val);
-    return r;
+/* Append JSON string quoting directly into the destination buffer.  This
+ * avoids allocating a temporary quoted JSString for every object key and
+ * string value during JSON.stringify. */
+static int json_string_buffer_put_quoted(StringBuffer *b, JSString *p)
+{
+    int i;
+    uint32_t c;
+    char buf[7];
+
+    if (string_buffer_putc8(b, '"'))
+        return -1;
+    for (i = 0; i < p->len;) {
+        c = string_getc(p, &i);
+        switch (c) {
+        case '\t': c = 't'; goto quote;
+        case '\r': c = 'r'; goto quote;
+        case '\n': c = 'n'; goto quote;
+        case '\b': c = 'b'; goto quote;
+        case '\f': c = 'f'; goto quote;
+        case '"':
+        case '\\':
+        quote:
+            if (string_buffer_putc8(b, '\\') || string_buffer_putc8(b, c))
+                return -1;
+            break;
+        default:
+            if (c < 32 || is_surrogate(c)) {
+                snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)c);
+                if (string_buffer_write8(b, (const uint8_t *)buf, 6))
+                    return -1;
+            } else if (string_buffer_putc(b, c)) {
+                return -1;
+            }
+            break;
+        }
+    }
+    return string_buffer_putc8(b, '"');
 }
 
 static JSValue js_json_check(JSContext *ctx, JSONStringifyContext *jsc,
@@ -502,13 +535,12 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
                 if (!JS_IsUndefined(v)) {
                     if (has_content)
                         string_buffer_putc8(jsc->b, ',');
-                    prop = JS_ToQuotedStringFree(ctx, prop);
-                    if (JS_IsException(prop)) {
+                    string_buffer_concat_value(jsc->b, sep);
+                    if (!JS_IsString(prop) ||
+                        json_string_buffer_put_quoted(jsc->b, JS_VALUE_GET_STRING(prop))) {
                         JS_FreeValue(ctx, v);
                         goto exception;
                     }
-                    string_buffer_concat_value(jsc->b, sep);
-                    string_buffer_concat_value(jsc->b, prop);
                     string_buffer_putc8(jsc->b, ':');
                     string_buffer_concat_value(jsc->b, sep1);
                     if (js_json_to_str(ctx, jsc, val, v, indent1))
@@ -537,10 +569,10 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
     switch (JS_VALUE_GET_NORM_TAG(val)) {
     case JS_TAG_STRING:
     case JS_TAG_STRING_ROPE:
-        val = JS_ToQuotedStringFree(ctx, val);
-        if (JS_IsException(val))
+        if (json_string_buffer_put_quoted(jsc->b, JS_VALUE_GET_STRING(val)))
             goto exception;
-        goto concat_value;
+        JS_FreeValue(ctx, val);
+        return 0;
     case JS_TAG_FLOAT64:
         if (!isfinite(JS_VALUE_GET_FLOAT64(val))) {
             val = JS_NULL;

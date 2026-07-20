@@ -1,0 +1,23 @@
+{
+  "optimization": "branch-aware scalar replacement for mutable non-escaping numeric object literals",
+  "methodology": "same host and whole-engine parity harness; three alternating baseline/candidate process pairs; TurboJS execution totals compared directly; first pair used three measured repetitions and remaining pairs used one measured repetition",
+  "baseline_turbojs_total_ms": [
+    657.1203599991277,
+    655.9315629992634,
+    624.568679000251
+  ],
+  "candidate_turbojs_total_ms": [
+    611.0771540002897,
+    620.1690300004557,
+    640.7490630010143
+  ],
+  "baseline_median_ms": 655.9315629992634,
+  "candidate_median_ms": 620.1690300004557,
+  "median_improvement_percent": 5.452174436504116,
+  "validation": {
+    "full_release_targets": 293,
+    "native_tests_passed": 97,
+    "native_tests_total": 97,
+    "focused_checksum_matches_node": true
+  }
+}

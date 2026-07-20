@@ -328,7 +328,18 @@ static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
     }
 
     old_size = p->u.array.u1.size;
-    new_size = old_size + old_size/2;
+
+    /* Small arrays are commonly built incrementally with push(). Growing
+       0 -> 1 -> 2 -> 3 causes repeated allocator traffic on a hot path.
+       Reserve a compact initial block, then double while the backing store is
+       small. Larger arrays use 1.5x growth to limit retained slack. */
+    if (old_size < 8) {
+        new_size = 8;
+    } else if (old_size < 1024) {
+        new_size = old_size * 2;
+    } else {
+        new_size = old_size + old_size / 2;
+    }
     if (new_size < old_size) {
         JS_ThrowOutOfMemory(ctx);
         return -1;
@@ -371,6 +382,7 @@ static int add_fast_array_element(JSContext *ctx, JSObject *p,
         }
     }
     p->u.array.u.values[new_len - 1] = val;
+    p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, val);
     p->u.array.count = new_len;
     return true;
 }
@@ -398,6 +410,7 @@ static JSValue js_allocate_fast_array(JSContext *ctx, int64_t len)
         p->u.array.count = len;
         for(i = 0; i < len; i++)
             p->u.array.u.values[i] = JS_UNDEFINED;
+        p->array_element_kind = TURBOJS_ARRAY_PACKED_VALUE;
         /* update the 'length' field */
         set_value(ctx, &p->prop[0].u.value, js_int32(len));
     }
@@ -704,11 +717,13 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
                 /* add element */
                 return add_fast_array_element(ctx, p, val, flags);
             }
+            p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, val);
             set_value(ctx, &p->u.array.u.values[idx], val);
             break;
         case JS_CLASS_ARGUMENTS:
             if (unlikely(idx >= (uint32_t)p->u.array.count))
                 goto slow_path;
+            p->array_element_kind = turbojs_array_merge_kind(p->array_element_kind, val);
             set_value(ctx, &p->u.array.u.values[idx], val);
             break;
         case JS_CLASS_MAPPED_ARGUMENTS:

@@ -1,0 +1,25 @@
+{
+  "pairs": [
+    {
+      "seed": 610839776,
+      "baseline_ms": 612.4126740023494,
+      "candidate_ms": 609.1643800009042,
+      "improvement_pct": 0.530409336602448
+    },
+    {
+      "seed": 627748836,
+      "baseline_ms": 613.2408620025963,
+      "candidate_ms": 612.5160859972239,
+      "improvement_pct": 0.11818781987318658
+    },
+    {
+      "seed": 644657896,
+      "baseline_ms": 617.4437020067126,
+      "candidate_ms": 633.3883009981364,
+      "improvement_pct": -2.582356729788217
+    }
+  ],
+  "median_baseline_ms": 613.2408620025963,
+  "median_candidate_ms": 612.5160859972239,
+  "improvement_pct": 0.11818781987318658
+}

@@ -101,7 +101,17 @@ static TurboJSSSAOpcode map_operation(uint8_t op, TurboJSSSAType *type) {
     case OP_add:return TURBOJS_SSA_ADD_I64;
     case OP_sub:return TURBOJS_SSA_SUB_I64;
     case OP_mul:return TURBOJS_SSA_MUL_I64;
+    case OP_and:return TURBOJS_SSA_AND_I64;
+    case OP_or:return TURBOJS_SSA_OR_I64;
+    case OP_xor:return TURBOJS_SSA_XOR_I64;
+    case OP_shl:return TURBOJS_SSA_SHL_I64;
+    case OP_sar:return TURBOJS_SSA_SAR_I64;
+    case OP_shr:return TURBOJS_SSA_SHR_I64;
     case OP_lt:*type=TURBOJS_SSA_TYPE_BOOLEAN;return TURBOJS_SSA_LESS_THAN_I64;
+    case OP_lte:*type=TURBOJS_SSA_TYPE_BOOLEAN;return TURBOJS_SSA_LESS_EQUAL_I64;
+    case OP_gt:*type=TURBOJS_SSA_TYPE_BOOLEAN;return TURBOJS_SSA_GREATER_THAN_I64;
+    case OP_gte:*type=TURBOJS_SSA_TYPE_BOOLEAN;return TURBOJS_SSA_GREATER_EQUAL_I64;
+    case OP_eq:*type=TURBOJS_SSA_TYPE_BOOLEAN;return TURBOJS_SSA_EQUAL_I64;
     default:return TURBOJS_SSA_NOP;
     }
 }
@@ -149,6 +159,8 @@ TurboJSIRStatus TurboJS_EngineBytecodeRegionBuildSSA(
             else if(rv->kind==TURBOJS_REGION_VALUE_ARGUMENT){op=TURBOJS_SSA_ARGUMENT;imm=rv->local_or_stack_index;}
             else if(rv->kind==TURBOJS_REGION_VALUE_CONSTANT){if(!constant_immediate(bc,rv,&imm)){st=fail(d,TURBOJS_IR_UNSUPPORTED,rv->source_offset,"unsupported region constant");goto done;}op=TURBOJS_SSA_CONSTANT_I64;}
             else if(rv->kind==TURBOJS_REGION_VALUE_OPERATION)op=map_operation(rv->opcode,&type);
+            else if(rv->kind==TURBOJS_REGION_VALUE_HELPER && rv->opcode==OP_object){op=TURBOJS_SSA_VIRTUAL_OBJECT;type=TURBOJS_SSA_TYPE_REFERENCE;}
+            else if(rv->kind==TURBOJS_REGION_VALUE_HELPER && rv->opcode==OP_define_field){op=TURBOJS_SSA_VIRTUAL_FIELD_STORE;type=TURBOJS_SSA_TYPE_REFERENCE;imm=(int64_t)rv->metadata;}
             else if(rv->kind==TURBOJS_REGION_VALUE_HELPER && rv->opcode==OP_get_field){op=TURBOJS_SSA_PROPERTY_LOAD;type=TURBOJS_SSA_TYPE_UNKNOWN;imm=(int64_t)rv->metadata;}
             else if(rv->kind==TURBOJS_REGION_VALUE_HELPER && rv->opcode==OP_put_field){op=TURBOJS_SSA_PROPERTY_STORE;type=TURBOJS_SSA_TYPE_UNKNOWN;imm=(int64_t)rv->metadata;}
             else {st=fail(d,TURBOJS_IR_UNSUPPORTED,rv->source_offset,"runtime-helper value cannot enter direct SSA region");goto done;}
@@ -158,8 +170,10 @@ TurboJSIRStatus TurboJS_EngineBytecodeRegionBuildSSA(
         }
         /* Re-simulate symbolic local/stack state to emit the block terminator. */
         {
-            uint32_t locals[256],stack[256],depth=cb->entry_stack_depth,ii;
-            if(state.local_count>256||state.stack_stride>256){st=fail(d,TURBOJS_IR_UNSUPPORTED,cb->start_offset,"region SSA temporary state limit exceeded");goto done;}
+            uint32_t *locals=NULL,*stack=NULL,depth=cb->entry_stack_depth,ii;
+            locals=(uint32_t*)malloc((state.local_count?state.local_count:1u)*sizeof(uint32_t));
+            stack=(uint32_t*)malloc((state.stack_stride?state.stack_stride:1u)*sizeof(uint32_t));
+            if(!locals||!stack){free(locals);free(stack);st=fail(d,TURBOJS_IR_OUT_OF_MEMORY,cb->start_offset,"unable to allocate region SSA block state");goto done;}
             memcpy(locals,state.entry_locals+state.blocks[bi].entry_local_offset,state.local_count*sizeof(uint32_t));
             memcpy(stack,state.entry_stack+state.blocks[bi].entry_stack_offset,state.stack_stride*sizeof(uint32_t));
             for(ii=0;ii<cb->instruction_count;ii++){
@@ -171,8 +185,9 @@ TurboJSIRStatus TurboJS_EngineBytecodeRegionBuildSSA(
                 if(opbc==OP_if_false||opbc==OP_if_true||opbc==OP_if_false8||opbc==OP_if_true8){uint32_t cond=depth?stack[depth-1]:TURBOJS_REGION_NO_VALUE,id;TurboJSSSAOpcode sop=(opbc==OP_if_true||opbc==OP_if_true8)?TURBOJS_SSA_BRANCH_TRUE:TURBOJS_SSA_BRANCH_FALSE;if(!append_value(ssa,(uint32_t)bi,sop,TURBOJS_SSA_TYPE_BOOLEAN,cond,TURBOJS_SSA_NO_VALUE,cb->successors[0],off,&id)){st=TURBOJS_IR_OUT_OF_MEMORY;goto done;}depth--;continue;}
                 if(opbc==OP_goto||opbc==OP_goto8||opbc==OP_goto16){uint32_t id;if(!append_value(ssa,(uint32_t)bi,TURBOJS_SSA_JUMP,TURBOJS_SSA_TYPE_UNKNOWN,TURBOJS_SSA_NO_VALUE,TURBOJS_SSA_NO_VALUE,cb->successors[0],off,&id)){st=TURBOJS_IR_OUT_OF_MEMORY;goto done;}continue;}
                 if(opbc==OP_return){uint32_t val=depth?stack[depth-1]:TURBOJS_REGION_NO_VALUE,id;if(!append_value(ssa,(uint32_t)bi,TURBOJS_SSA_RETURN,TURBOJS_SSA_TYPE_INT64,val,TURBOJS_SSA_NO_VALUE,0,off,&id)){st=TURBOJS_IR_OUT_OF_MEMORY;goto done;}depth--;continue;}
-                if(pop>=0){if((uint32_t)pop>depth){st=fail(d,TURBOJS_IR_INVALID_OPCODE,off,"region SSA stack underflow");goto done;}depth-=(uint32_t)pop;if(push>0){rv=value_at_offset(&state,(uint32_t)bi,off);if(!rv){st=fail(d,TURBOJS_IR_UNSUPPORTED,off,"missing symbolic operation value");goto done;}stack[depth++]=rv->id;}}
+                if(pop>=0){if((uint32_t)pop>depth){free(locals);free(stack);st=fail(d,TURBOJS_IR_INVALID_OPCODE,off,"region SSA stack underflow");goto done;}depth-=(uint32_t)pop;if(push>0){rv=value_at_offset(&state,(uint32_t)bi,off);if(!rv){free(locals);free(stack);st=fail(d,TURBOJS_IR_UNSUPPORTED,off,"missing symbolic operation value");goto done;}stack[depth++]=rv->id;}}
             }
+            free(locals);free(stack);
         }
     }
     /* Resolve symbolic operands after all values, including backedges, exist. */
