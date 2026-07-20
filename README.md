@@ -14,6 +14,8 @@ TurboJS is a full JavaScript engine built for software that needs serious execut
 
 It combines a bytecode interpreter, baseline JIT, feedback-directed SSA optimizer, inline caches, on-stack replacement, deoptimization, native code management, AOT support, and application-region optimization behind a direct C API.
 
+Message from the developer: Hey guys, happy to finally be releasing something I'm very proud of developing. When I started this project, I had no idea how much work it was going to be. This was a little over a year and 8 months of development before the engine's performance in long-running Javascript applications came toe to toe with v8 in the benchmark suite and outside testing. Nevertheless, I present to you Turbo, the most lightweight Javascript engine that doesn't sacrifice throughput. 
+
 ## What TurboJS has achieved
 
 | Achievement | Current result |
