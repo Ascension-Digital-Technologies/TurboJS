@@ -19,17 +19,25 @@ It combines a bytecode interpreter, baseline JIT, feedback-directed SSA optimize
 
 Hey everyone,
 
-I’m incredibly excited to finally release something I’m deeply proud to have built.
+After more than a year and eight months of development, I’m incredibly proud to officially release TurboJS v1.0.0.
 
-When I started this project, I had no idea just how much work it would require. What began as an ambitious experiment turned into more than a year and eight months of focused development, testing, optimization, and refinement.
+When I began this project, I had no idea how far it would go—or how much work it would take to get here. What started as an ambitious experiment gradually became a complete JavaScript engine with its own interpreter, bytecode compiler, baseline JIT, optimizing compiler, inline caches, on-stack replacement, deoptimization, native-code management, AOT support, garbage collector, command-line runtime, and stable C embedding API.
 
-Today, Turbo has reached the point where its performance in long-running JavaScript workloads stands toe-to-toe with V8 across the benchmark suite and in broader real-world testing.
+The goal behind TurboJS was straightforward, even if achieving it was anything but: build a JavaScript engine that could deliver serious long-running performance without requiring the size, memory footprint, or surrounding infrastructure of a browser-scale runtime.
 
-I’m proud to introduce **Turbo**: an exceptionally lightweight JavaScript engine designed to deliver outstanding performance without the usual tradeoffs in size, memory usage, or embeddability.
+With the 1.0 release, TurboJS has reached a major milestone. Across the retained whole-engine benchmark suite, it achieved an aggregate geometric-mean execution time competitive with—and slightly ahead of—the tested Node/V8 configuration, while maintaining exact checksum parity across every workload. TurboJS also outperformed Node/V8 individually in five of the ten retained workloads.
 
-Turbo was originally inspired by QuickJS and, in its earliest stages, was built from its codebase. Since then, it has evolved into a substantially different engine with its own architecture, optimization pipeline, runtime systems, and performance goals.
+Just as importantly, TurboJS was designed to remain compact and easy to embed. It provides native applications with JavaScript execution through a direct C API, without requiring a browser, DOM, event loop, framework, or Node.js environment.
 
-This release represents an enormous amount of work, and I’m excited to finally share it with everyone.
+TurboJS was originally inspired by QuickJS and began from its codebase during the earliest stages of development. Since then, it has evolved substantially into an independently structured engine with its own compilation tiers, optimization pipeline, execution systems, architecture, tooling, and long-term direction.
+
+The repository now includes extensive documentation for developers who want to understand, embed, test, benchmark, or eventually contribute to the engine. Every major subsystem is documented, including the runtime, object model, memory management, JIT pipeline, native backends, AOT formats, public API, debugging workflow, testing process, and contribution standards.
+
+I also want to be clear about what a 1.0 release means. It does not mean the work is finished. JavaScript compatibility, optimizer coverage, ARM64 backend parity, diagnostics, platform testing, and real-world workload coverage will continue to improve. Version 1.0 establishes a stable foundation, a documented public API, and a serious starting point for everything that comes next.
+
+This project has required an enormous amount of persistence, experimentation, debugging, testing, and optimization. Seeing it finally reach its first stable release is something I’m extremely proud of.
+
+I’m excited to finally share TurboJS v1.0.0 with everyone.
 
 
 ## What TurboJS has achieved
