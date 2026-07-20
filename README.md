@@ -17,7 +17,20 @@ It combines a bytecode interpreter, baseline JIT, feedback-directed SSA optimize
 
 ## Message from the developer
 
-Hey guys, happy to finally be releasing something I'm very proud of developing. When I started this project, I had no idea how much work it was going to be. This was a little over a year and 8 months of development before the engine's performance in long-running Javascript applications came toe to toe with v8's performance in both the benchmark suite and outside testing. Nevertheless, I present to you Turbo, the most lightweight Javascript engine released to date with no performance sacrifice. This project was originally inspired by QuickJS and built off of it's code base in it's earliest stages.
+Hey everyone,
+
+I’m incredibly excited to finally release something I’m deeply proud to have built.
+
+When I started this project, I had no idea just how much work it would require. What began as an ambitious experiment turned into more than a year and eight months of focused development, testing, optimization, and refinement.
+
+Today, Turbo has reached the point where its performance in long-running JavaScript workloads stands toe-to-toe with V8 across the benchmark suite and in broader real-world testing.
+
+I’m proud to introduce **Turbo**: an exceptionally lightweight JavaScript engine designed to deliver outstanding performance without the usual tradeoffs in size, memory usage, or embeddability.
+
+Turbo was originally inspired by QuickJS and, in its earliest stages, was built from its codebase. Since then, it has evolved into a substantially different engine with its own architecture, optimization pipeline, runtime systems, and performance goals.
+
+This release represents an enormous amount of work, and I’m excited to finally share it with everyone.
+
 
 ## What TurboJS has achieved
 
